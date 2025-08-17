@@ -4,7 +4,7 @@ This repo contains files and instructions for the project for the Medical Roboti
 
 The objective of the project is to execute a grasping task in a VR environment in [Unity game engine](https://unity3d.com) using the WEART TouchDIVER G1 haptic interface (https://weart.it/haptic-vr-products/touchdiver-haptic-glove/).
 
-In particular, the vanilla WEART SDK animates the hand interpolating between a _open_, _relaxed_ and _closed_ animation, depending on a _closure_ parameter between [0, 1]. Each finger has its own _closure_ parameter, where 0 corresponds to a completely extended finger and 1 completely curled finger. Additionally, the thumb has an _abduction_ parameter, although its value is handled has another _closure_ in the communication between Unity and the [middleware](#middleware).
+In particular, the vanilla WEART SDK animates the hand interpolating between a _open_, _relaxed_ and _closed_ animation, depending on a _closure_ parameter between [0, 1]. Each finger has its own _closure_ parameter, where 0 corresponds to a completely extended finger and 1 completely curled finger. Additionally, the thumb has an _abduction_ parameter, although its value is handled as another _closure_ in the communication between Unity and the [middleware](#middleware).
 
 In a second moment, the hand will be tracked with the inbuilt cameras of the VR headset instead of the haptic interface.
 
