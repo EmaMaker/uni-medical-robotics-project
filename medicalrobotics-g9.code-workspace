@@ -1,0 +1,13 @@
+{
+	"folders": [
+		{
+			"path": "WEART_SDK_Unity_v2.0.0"
+		},
+		{
+			"path": "fakemiddleware"
+		}
+	],
+	"settings": {
+		"git.ignoreLimitWarning": true
+	}
+}
