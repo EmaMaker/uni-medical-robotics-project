@@ -60,7 +60,7 @@ def thimble_tracking_all(conn, d=128) -> str:
     send_response(conn,response)
     return response
 
-def thimble_tracking(conn, right_index_closure, right_thumb_closure, right_thumb_abduct, right_middle_closure, left_index_closure, left_thumb_closure, left_thumb_abduct, left_middle_closure) -> str:
+def thimble_tracking(conn, right_index_closure=0, right_thumb_closure=0, right_thumb_abduct=0, right_middle_closure=0, left_index_closure=0, left_thumb_closure=0, left_thumb_abduct=0, left_middle_closure=0) -> str:
     print("Sending fake thimble tracking data (per finger control)")
     response='Tracking:TrackType1:'+str(right_index_closure)+':'+str(right_thumb_closure)+':'+str(right_thumb_abduct)+':'+str(right_middle_closure)+':'+str(left_index_closure)+':'+str(left_thumb_closure)+':'+str(left_thumb_abduct)+':'+str(left_middle_closure)+'~';
     response=response.encode("utf-8")
