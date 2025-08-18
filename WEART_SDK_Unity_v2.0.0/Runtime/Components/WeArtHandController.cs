@@ -153,13 +153,39 @@ namespace WeArt.Components
         /// </summary>
         private WeArtHandController _otherHand;
 
+        // -------------------- //
         // MEDICAL
-        // Transforms, Math.NET Numerics
-        static Transform i_t, i_t1, i_t2, i_t3;
-        static Vector3 i_j1_initial, i_j2_initial, i_j3_initial;
+        // Variable definition
         static VectorBuilder<double> V = Vector<double>.Build;
         static MatrixBuilder<double> M = Matrix<double>.Build;
-        static Vector<double> Q;
+
+        // Hands (use the same convention as CalibrationResult)
+        static readonly int LEFT = 0;
+        static readonly int RIGHT = 1;
+        static readonly int TOTAL_HANDS = 2;
+        int CURRENT_HAND;
+        string handString, handStringLong;
+
+        // Fingers
+        static readonly int THUMB = 0;
+        static readonly int INDEX = 1;
+        static readonly int MIDDLE = 2;
+        static readonly int RING = 3;
+        static readonly int PINKY = 4;
+        static readonly int TOTAL_FINGERS = 5;
+        static readonly int TOTAL_THIMBLES = 3;
+        static readonly string[] finger_name = {"thumb", "index", "middle", "ring", "pinky"};
+        // The objects depending on the last thimble (Colliders, Haptics, etc) use a slightly different name scheme
+        static readonly string[] finger_name_end = {"Thumb", "Index", "Middle", "Annular", "Pinky"};
+
+        // Five fingers, three thimbles each finger
+        static Transform[,] finger_transform = new Transform[TOTAL_FINGERS,3];
+        static double[,] finger_link_length = new double[TOTAL_FINGERS,3];
+        static Vector3[,] finger_joint_initial_position = new Vector3[TOTAL_FINGERS,3];
+        static Vector3[,] finger_joint_initial_rotation = new Vector3[TOTAL_FINGERS,3];
+        static Vector<double>[] finger_robot_joint_angles = new Vector<double>[TOTAL_FINGERS];
+        // END MEDICAL
+        // -------------------- //
 
         #endregion
 
@@ -169,19 +195,7 @@ namespace WeArt.Components
         /// Initial set up
         /// </summary>
         private void Awake()
-        {
-            // Find transforms of finger parts
-            i_t = transform.Find("HandRig").Find("HandRoot").Find("DEF-hand.R").Find("ORG-palm.01.R").Find("DEF-f_index.01.R");
-            i_t1 = i_t.Find("DEF-f_index.02.R");
-            i_t2 = i_t1.Find("DEF-f_index.03.R");
-
-            // Set initial Q to angles as set in the model
-            i_j1_initial = i_t.localRotation.eulerAngles;
-            i_j2_initial = i_t1.localRotation.eulerAngles;
-            i_j3_initial = i_t2.localRotation.eulerAngles;
-            WeArtLog.Log("J1: " + i_j1_initial + ", J2: " + i_j2_initial + ", J3: " + i_j3_initial);
-            Q = V.DenseOfArray(new[]{(double)i_j1_initial.x, (double)i_j2_initial.x, (double)i_j3_initial.x}) * (double)Mathf.Deg2Rad;
-
+        {   
             // Setup components
             _graspingSystem = GetComponent<WeArtHandGraspingSystem>();
             _surfaceExploration = GetComponent<WeArtHandSurfaceExploration>();
@@ -223,7 +237,68 @@ namespace WeArt.Components
                     _otherHand = component;
                 }
             }
- 
+            
+            // -------------------- //
+            // MEDICAL: derive useful information from hand model
+            // Navigate through the hierarcy to extract single GameObjects
+            // WeArtHandController is attached to WEART>Hands>WeArtRightHand or WeArtLeftHand
+            // WeArt*Hand>HandRig>HandRoot
+            Transform handRoot = transform.Find("HandRig").Find("HandRoot");
+            CURRENT_HAND = gameObject.name.Equals("WEARTRightHand") ? 1 : 0;
+            handString  = gameObject.name.Equals("WEARTRightHand") ? "R" : "L";
+            handStringLong  = gameObject.name.Equals("WEARTRightHand") ? "Right" : "Left";
+            string debug_string = $"";
+            
+            // Both hands use the suffix R for single joints, except the point with colliders, etc. that use proper Right and Left
+            // HandRoot > DEF-hand.*
+            Transform handDef = handRoot.Find("DEF-hand.R");
+
+            // DEF-hand.* > ORG-palm.0n., n=1,2,3,4
+            for(int j = 0; j < TOTAL_FINGERS; j++){
+                int finger_model_index;
+                string fdefname;
+                // Both thumb and index are attachedto ORG-palm.01
+                if(j == THUMB) {
+                    finger_model_index = 1;
+                    fdefname = "DEF-thumb";
+                }
+                // The rest are attached to numbers in increasing order (02 middle, 03 ring, 04 pinky)
+                else {
+                    finger_model_index = j;
+                    fdefname = "DEF-f_" + finger_name[j];
+                }
+
+                // ORG-palm.0n > DEF-f_finger.0n
+                Transform org = handDef.Find("ORG-palm.0"+finger_model_index+".R");
+
+                // Then each finger is made of three thimbles, ordered 01, 02, 03 nested
+                finger_transform[j,0] = org.Find(fdefname+".01.R");
+                finger_transform[j,1] = finger_transform[j,0].Find(fdefname+".02.R");
+                finger_transform[j,2] = finger_transform[j,1].Find(fdefname+".03.R");
+
+                // Now that each object has been found, extract useful information
+
+                // Rotation + position
+                for (int k = 0; k < TOTAL_THIMBLES; k++){
+                    finger_joint_initial_rotation[j,k] = finger_transform[j,k].localRotation.eulerAngles;
+                    finger_joint_initial_position[j,k] = finger_transform[j,k].position;
+                    
+                }
+                finger_robot_joint_angles[j] = V.DenseOfArray(new[]{(double)finger_joint_initial_rotation[j,0].x, (double)finger_joint_initial_rotation[j,1].x, (double)finger_joint_initial_rotation[j,2].x}) * (double)Mathf.Deg2Rad;
+
+                // Link lengths
+                finger_link_length[j,0] = Vector3.Distance(finger_joint_initial_position[j,0], finger_joint_initial_position[j,1]);
+                finger_link_length[j,1] = Vector3.Distance(finger_joint_initial_position[j,1], finger_joint_initial_position[j,2]);
+                // This one sits exactly at the point of the finger
+                Transform collider = finger_transform[j,2].Find(handStringLong + finger_name_end[j] + "ExplorationOrigin");
+                finger_link_length[j,2] = Vector3.Distance(finger_joint_initial_position[j,2] , collider.position);
+
+                debug_string += $"{finger_name_end[j]}:\n\tLink lengths: L1: {finger_link_length[j,0], 3}, L2: {finger_link_length[j,1]}, L3: {finger_link_length[j,2]}" +
+                                $"\n\tInitial rotations: L1: {finger_joint_initial_rotation[j,0]}, L2: {finger_joint_initial_rotation[j,1]}, L3: {finger_joint_initial_rotation[j,2]}\n";
+            }
+            WeArtLog.Log(debug_string);
+            // END MEDICAL
+            // -------------------- //
         }
 
         /// <summary>
@@ -384,6 +459,9 @@ namespace WeArt.Components
             
         }
 
+        
+        // -------------------- //
+        // MEDICAL: IK and trajectory
         static double L1 = 0.0435d;
         static double L2 = 0.0333d;
         static double L3 = 0.0204d;
@@ -590,7 +668,7 @@ namespace WeArt.Components
             // Q = sim(Q, CLOSURE);
 
             // Take closure from interface, data in [0,1] as parsed by middleware
-            Q = sim(Q, _thimbles[1].Closure.Value);
+            finger_robot_joint_angles[INDEX] = sim(finger_robot_joint_angles[INDEX], _thimbles[1].Closure.Value);
             
             // TODO: Hard limit angles to [initial+0, initial+pi/2], otherwise it results in some unnatural manipulator-like
             // movements, especially with the finger slightly folding the opposite way when extending
@@ -607,6 +685,10 @@ namespace WeArt.Components
             // quat1.eulerAngles = new Vector3(fixAngleDeg(i_j2_initial.x + Mathf.Rad2Deg*Q.At(1)), 0, 0);
             // quat2.eulerAngles = new Vector3(fixAngleDeg(i_j3_initial.x + Mathf.Rad2Deg*Q.At(2)), 0, 0);
 
+            Vector<double> Q = finger_robot_joint_angles[INDEX];
+            Vector3 i_j1_initial = finger_joint_initial_rotation[INDEX, 0];
+            Vector3 i_j2_initial = finger_joint_initial_rotation[INDEX, 1];
+            Vector3 i_j3_initial = finger_joint_initial_rotation[INDEX, 2];
             quat.eulerAngles = new Vector3(fixAngleDeg(i_j1_initial.x + Mathf.Rad2Deg*Q.At(0)), i_j1_initial.y, i_j1_initial.z);
             quat1.eulerAngles = new Vector3(fixAngleDeg(i_j2_initial.x + Mathf.Rad2Deg*Q.At(1)), i_j2_initial.y, i_j2_initial.z);
             quat2.eulerAngles = new Vector3(fixAngleDeg(i_j3_initial.x + Mathf.Rad2Deg*Q.At(2)), i_j3_initial.y, i_j3_initial.z);
@@ -616,10 +698,12 @@ namespace WeArt.Components
             // quat1.eulerAngles = Vector3.Max(i_j2_initial, Vector3.Min(quat1.eulerAngles, Vector3.one*110.0f));
             // quat2.eulerAngles = Vector3.Max(i_j3_initial, Vector3.Min(quat2.eulerAngles, Vector3.one*110.0f));
             
-            i_t.localRotation = quat;
-            i_t1.localRotation = quat1;
-            i_t2.localRotation = quat2;
+            finger_transform[INDEX, 0].localRotation = quat;
+            finger_transform[INDEX, 1].localRotation = quat1;
+            finger_transform[INDEX, 2].localRotation = quat2;
         }
+        // END MEDICAL
+        // -------------------- //
 
         // MEDICAL: Check this
         /// <summary>
@@ -627,120 +711,7 @@ namespace WeArt.Components
         /// </summary>
         private void AnimateFingers()
         {
-            // _graph.Evaluate();
-
-            // if (_useCustomPoses && _graspingSystem.GraspingState == GraspingState.Grabbed)
-            // {
-            //     // In this case the fingers not follow the tracking but are driven by WeArtGraspPose
-            //     // The behaviour is called in this script in -> UpdateFingerClousure
-            // }
-            // else // Otherwise fingers behaviour works as always
-            // {
-            
-            // WeArtLog.Log($"Closure: " + cl + "\nQ1: " + Q.At(0) + ", Q2: " + Q.At(1) + ", Q3: " + Q.At(2));
-
-                // GameObject[] components = gameObject.GetComponents<GameObject>();
-                // foreach (GameObject c in components){
-                //     WeArtLog.Log(c.name);
-                // }
-                // for (int i = 0; i < gameObject.GetComponentCount(); i++){
-                //     WeArtLog.Log(gameObject.GetComponentAtIndex(i));
-                // }
-
-                //t.Translate(0,-0.001f*Mathf.Sign(((float)Mathf.Sin(0.01f*Time.frameCount))),0);
-                // Rotates by x amount of degrees
-                //i_t.Rotate(45 + 45*(float)Mathf.Sin(0.000001f*Time.unscaledTime),0,0);
-                
-                
-
-
-            //     //----
-
-            //     for (int i = 0; i < _fingers.Length; i++)
-            //     {
-            //         if (!_thimbles[i].IsBlocked)
-            //         {
-            //             bool isGettingCloseToGrasp = false;
-
-            //             if (i == 0 && _graspingSystem.ThumbGraspCheckTouchables.Count > 0 && _thimbles[i].Closure.Value > _fingersMixers[i].GetInputWeight(1))
-            //                 isGettingCloseToGrasp = true; // Finger is getting close to an object that it can grab and slows the speed in order to ensure a perfect position on the touchable object
-
-            //             if (i == 1 && _graspingSystem.IndexGraspCheckTouchables.Count > 0 && _thimbles[i].Closure.Value > _fingersMixers[i].GetInputWeight(1))
-            //                 isGettingCloseToGrasp = true;
-
-            //             if (i == 2 && _graspingSystem.MiddleGraspCheckTouchables.Count > 0 && _thimbles[i].Closure.Value > _fingersMixers[i].GetInputWeight(1))
-            //                 isGettingCloseToGrasp = true;
-
-            //             if (WeArtController.Instance._deviceGeneration == DeviceGeneration.TD_Pro)
-            //             {
-            //                 if (i == 3 && _graspingSystem.AnnularGraspCheckTouchables.Count > 0 && _thimbles[i].Closure.Value > _fingersMixers[i].GetInputWeight(1))
-            //                     isGettingCloseToGrasp = true;
-
-            //                 if (i == 4 && _graspingSystem.PinkyGraspCheckTouchables.Count > 0 && _thimbles[i].Closure.Value > _fingersMixers[i].GetInputWeight(1))
-            //                     isGettingCloseToGrasp = true;
-            //             }
-
-            //             float weight;
-            //             if (!isGettingCloseToGrasp)
-            //             {
-            //                 weight = _thimbles[i].Closure.Value;
-            //             }
-            //             else // If in proximity, move slower in order to avoid clipping through colliders at high movement speed per frame
-            //             {
-            //                 weight = Mathf.Lerp(_fingersMixers[i].GetInputWeight(1), _thimbles[i].Closure.Value,
-            //                    Time.deltaTime * (_thimbles[i].SafeUnblockSeconds > 0 ? _fingersSlideSpeed : _fingersAnimationSpeed));
-            //             }
-
-            //             if (_slowFingerAnimationTime > 0)
-            //             {
-            //                 weight = Mathf.Lerp(_fingersMixers[i].GetInputWeight(1), _thimbles[i].Closure.Value,
-            //                    Time.deltaTime * _fingersSlideSpeed * _extraFingerSpeed);
-            //             }
-
-            //             if (i > 2 && WeArtController.Instance._deviceGeneration == DeviceGeneration.TD)
-            //             {
-            //                 _fingersMixers[i].SetInputWeight(0, 1 - _fingersMixers[2].GetInputWeight(1));
-            //                 _fingersMixers[i].SetInputWeight(1, _fingersMixers[2].GetInputWeight(1));
-            //             }
-            //             else
-            //             {
-            //                 _fingersMixers[i].SetInputWeight(0, 1 - weight);
-            //                 _fingersMixers[i].SetInputWeight(1, weight);
-            //             }
-
-            //             // Thumb has an extra field called abduction that allows the finger to move up and down (non closing motion)
-            //             if (_thimbles[i].ActuationPoint == ActuationPoint.Thumb)
-            //             {
-            //                 float abduction;
-            //                 if (!isGettingCloseToGrasp)
-            //                 {
-            //                     abduction = _thimbles[i].Abduction.Value;
-            //                 }
-            //                 else
-            //                 {
-            //                     abduction = Mathf.Lerp(_fingersMixers[i].GetInputWeight(2), _thimbles[i].Abduction.Value,
-            //                     Time.deltaTime * (_thimbles[i].SafeUnblockSeconds > 0 ? _fingersSlideSpeed : _fingersAnimationSpeed));
-            //                 }
-
-            //                 if (_slowFingerAnimationTime > 0)
-            //                 {
-            //                     abduction = Mathf.Lerp(_fingersMixers[i].GetInputWeight(2), _thimbles[i].Abduction.Value,
-            //                     Time.deltaTime * (_thimbles[i].SafeUnblockSeconds > 0 ? _fingersSlideSpeed * _extraFingerSpeed : _thumbAnimationSpeed));
-            //                 }
-
-            //                 _fingersMixers[i].SetInputWeight(2, abduction);
-            //             }
-
-            //             if (_thimbles[i].SafeUnblockSeconds > 0)
-            //                 _thimbles[i].SafeUnblockSeconds -= Time.deltaTime;
-            //         }
-            //     }
-            // }
-
-
-            // Slow finger animation countdown
-            // if (_slowFingerAnimationTime > 0)
-            //     _slowFingerAnimationTime -= Time.deltaTime;
+            _graph.Evaluate();
         }
 
         public void SetFingerAnimation(EasyGraspData data)
