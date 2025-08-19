@@ -162,7 +162,6 @@ namespace WeArt.Components
         // Hands (use the same convention as CalibrationResult)
         static readonly int LEFT = 0;
         static readonly int RIGHT = 1;
-        static readonly int TOTAL_HANDS = 2;
         int CURRENT_HAND;
         string handString, handStringLong;
 
@@ -184,8 +183,38 @@ namespace WeArt.Components
         static Vector3[,] finger_joint_initial_position = new Vector3[TOTAL_FINGERS,3];
         static Vector3[,] finger_joint_initial_rotation = new Vector3[TOTAL_FINGERS,3];
         static Vector<double>[] finger_robot_joint_angles = new Vector<double>[TOTAL_FINGERS];
+        
+        // Radii for arc of circle trajctories for IK
+        static readonly double[] trajectory_arc_radii = {0.8d, 0.068d, 0.072d, 0.08d, 0.052};
+        // Map finger to used index in _thimbles[i]
+        // For TouchDiver G1, middle, ring and pinky all map to the middle
+        static readonly int[] FINGER_TO_CLOSURE_INDEX = {0, 1, 2, 2, 2};
+
+        // The arc of circle is parametrized as a curve by parameter t,[0,1]
+        // where 0 is completely extended (q=0) and 1 completely curled (q=pi/2)
+        // however this is made on a skeleton of the hand, and the visual result is not pleasant when looking
+        // at a fully extended of fully curved hand
+        // This parameter represent how to map the thimble curvature as received by the middeware [0, 1], to the parameter
+        // t that parametrizes the trajectory and how much to "cut" so that the animation of the real hand never fully matches that
+        // of the skeleton hand
+        static double[] CLOSURE_TO_ARC_T_START = {0.0d, 0.0d, 0.0d, 0.0d, 0.0d};
+        static double[] CLOSURE_TO_ARC_T_END = {0.0d, 0.0d, 0.0d, 0.0d, 0.0d};
+        // To be properly calibrated with interface
+        // static double[] CLOSURE_TO_ARC_T_START = {0.0d, 0.006d, 0.008d, 0.004d, 0.0d};
+        // static double[] CLOSURE_TO_ARC_T_END = {0.0d, 0.13d, 0.16d, 0.16d, 0.11d};
+        
+        // the finger moves on the y-z plane
+        static Vector<double>[] pExtended = new Vector<double>[TOTAL_FINGERS];
+        static Vector<double>[] pCurled = new Vector<double>[TOTAL_FINGERS];
+        
+        // useful constants
+        static Vector<double> ZEROS = V.DenseOfArray(new[] {0.0d,0.0d,0.0d});
+        static Vector<double> ONES = V.DenseOfArray(new[] {1.0d,1.0d,1.0d});
+        Matrix<double> I3 = M.DenseIdentity(3);
+        static float TWO_PI = Mathf.PI * 2.0f;
         // END MEDICAL
         // -------------------- //
+
 
         #endregion
 
@@ -247,7 +276,7 @@ namespace WeArt.Components
             CURRENT_HAND = gameObject.name.Equals("WEARTRightHand") ? 1 : 0;
             handString  = gameObject.name.Equals("WEARTRightHand") ? "R" : "L";
             handStringLong  = gameObject.name.Equals("WEARTRightHand") ? "Right" : "Left";
-            string debug_string = $"";
+            string debug_string = $"{handStringLong[CURRENT_HAND]}  hand:\n";
             
             // Both hands use the suffix R for single joints, except the point with colliders, etc. that use proper Right and Left
             // HandRoot > DEF-hand.*
@@ -257,7 +286,8 @@ namespace WeArt.Components
             for(int j = 0; j < TOTAL_FINGERS; j++){
                 int finger_model_index;
                 string fdefname;
-                // Both thumb and index are attachedto ORG-palm.01
+                // Both thumb and index are attached to ORG-palm.01
+                // Also the thumb follows a naming scheme different from other fingers (namely missing the f_ prefix)
                 if(j == THUMB) {
                     finger_model_index = 1;
                     fdefname = "DEF-thumb";
@@ -270,7 +300,6 @@ namespace WeArt.Components
 
                 // ORG-palm.0n > DEF-f_finger.0n
                 Transform org = handDef.Find("ORG-palm.0"+finger_model_index+".R");
-
                 // Then each finger is made of three thimbles, ordered 01, 02, 03 nested
                 finger_transform[j,0] = org.Find(fdefname+".01.R");
                 finger_transform[j,1] = finger_transform[j,0].Find(fdefname+".02.R");
@@ -292,6 +321,13 @@ namespace WeArt.Components
                 // This one sits exactly at the point of the finger
                 Transform collider = finger_transform[j,2].Find(handStringLong + finger_name_end[j] + "ExplorationOrigin");
                 finger_link_length[j,2] = Vector3.Distance(finger_joint_initial_position[j,2] , collider.position);
+
+                double L1 = finger_link_length[j, 0];
+                double L2 = finger_link_length[j, 1];
+                double L3 = finger_link_length[j, 2];
+                
+                pExtended[j] = V.DenseOfArray(new[] {0.0d, L1+L2+L3});
+                pCurled[j] = V.DenseOfArray(new[] {L1-L3, -L2});
 
                 debug_string += $"{finger_name_end[j]}:\n\tLink lengths: L1: {finger_link_length[j,0], 3}, L2: {finger_link_length[j,1]}, L3: {finger_link_length[j,2]}" +
                                 $"\n\tInitial rotations: L1: {finger_joint_initial_rotation[j,0]}, L2: {finger_joint_initial_rotation[j,1]}, L3: {finger_joint_initial_rotation[j,2]}\n";
@@ -458,49 +494,7 @@ namespace WeArt.Components
                 _graspingSystem.UpdateGraspingSystem();
             
         }
-
         
-        // -------------------- //
-        // MEDICAL: IK and trajectory
-        static double L1 = 0.0435d;
-        static double L2 = 0.0333d;
-        static double L3 = 0.0204d;
-        static float TWO_PI = Mathf.PI * 2.0f;
-        
-        // The arc of circle is parametrized as a curve by parameter t,[0,1]
-        // where 0 is completely extended (q=0) and 1 completely curled (q=pi/2)
-        // however this is made on a skeleton of the hand, and the visual result is not pleasant when looking
-        // at a fully extended of fully curved hand
-        // This parameter represent how to map the thimble curvature as received by the middeware [0, 1], to the parameter
-        // t that parametrizes the trajectory and how much to "cut" so that the animation of the real hand never fully matches that
-        // of the skeleton hand
-        // e.g. CLOSURE_TO_ARC = 0.1d means closure=0 corresponds to t=0.1 and closure=1 corresponds to t=1
-        static double CLOSURE_TO_ARC_T_START = 0.006d;
-        static double CLOSURE_TO_ARC_T_END = 0.1d;
-        // the finger moves on the y-z plane
-        // static Vector<float> pExtended = new Vector2(0, L1+L2+L3);
-        // static Vector2 pCurled = new Vector2(L1-L3, -L2);
-        static Vector<double> pExtended = V.DenseOfArray(new[] {0.0d, L1+L2+L3});
-        static Vector<double> pCurled = V.DenseOfArray(new[] {L1-L3, -L2});
-        
-        static Vector<double> ZEROS = V.DenseOfArray(new[] {0.0d,0.0d,0.0d});
-        static Vector<double> ONES = V.DenseOfArray(new[] {1.0d,1.0d,1.0d});
-        Matrix<double> I3 = M.DenseIdentity(3);
-        /* Measurements found by:
-        {
-            // find child of child .. of child thimbles via concatenating transforms
-            Transform i_t = transform.Find("HandRig").Find("HandRoot").Find("DEF-hand.R").Find("ORG-palm.01.R").Find("DEF-f_index.01.R");
-            Transform i_t1 = i_t.Find("DEF-f_index.02.R");
-            Transform i_t2 = i_t1.Find("DEF-f_index.03.R");
-            Transform i_t3 = i_t2.Find("RightIndexExplorationOrigin");
-
-            float L1 = Vector3.Distance(i_t.position, i_t1.position);
-            float L2 = Vector3.Distance(i_t1.position, i_t2.position);
-            float L3 = Vector3.Distance(i_t2.position, i_t3.position);
-            WeArtLog.Log("Link1: " + L1 + ", Link2: " + L2 + ", Link3: " + L3);
-        }
-        */
-
         private double Sin(float f){
             return (double) Mathf.Sin(f);
         }
@@ -536,19 +530,28 @@ namespace WeArt.Components
         private float fixAngleDeg(double a){ return fixAngleDeg((float)a); }
         /* ---- MEDICAL ---- */
         // Direct kinematics
-        private Vector<double> DK(Vector<double> q){
+        private Vector<double> DK(int finger, Vector<double> q){
             double q1 = q.At(0);
             double q2 = q.At(1);
             double q3 = q.At(2);
+
+            double L1 = finger_link_length[finger, 0];
+            double L2 = finger_link_length[finger, 1];
+            double L3 = finger_link_length[finger, 2];
+
             double x = (double) (L1*Sin(q1)+L2*Sin(q1+q2)+L3*Sin(q1+q2+q3));
             double y = (double) (L1*Cos(q1)+L2*Cos(q1+q2)+L3*Cos(q1+q2+q3));
             return V.DenseOfArray(new[] {x, y});
         }
 
-        private Matrix<double> jacobian(Vector<double> q){
+        private Matrix<double> jacobian(int finger, Vector<double> q){
             double q1 = q.At(0);
             double q2 = q.At(1);
             double q3 = q.At(2);
+
+            double L1 = finger_link_length[finger, 0];
+            double L2 = finger_link_length[finger, 1];
+            double L3 = finger_link_length[finger, 2];
             
             double[,] matrix = {
                 {(double) (L1*Cos(q1) + L2*Cos(q1+q2) + L3*Cos(q1+q2+q3)), (double)(L2*Cos(q1+q2) + L3*Cos(q1+q2+q3)), (double)(L3*Cos(q1+q2+q3))},
@@ -557,14 +560,14 @@ namespace WeArt.Components
             return M.DenseOfArray(matrix);
         }
 
-        private Vector<double> velocity_control_euler(Vector<double> q, double closure){
-            Vector<double> fd = two_point_arc(0.07f, closure);
+        private Vector<double> velocity_control_euler(int finger, Vector<double> q, double closure){
+            Vector<double> fd = two_point_arc(finger, trajectory_arc_radii[finger], closure);
             Vector<double> dq0 = null_space_term(q);
 
-            Matrix<double> J = jacobian(q);
+            Matrix<double> J = jacobian(finger, q);
             Matrix<double> J_ = J.PseudoInverse();
             Matrix<double> Proj = I3 - J_*J;
-            Vector<double> f = DK(q);
+            Vector<double> f = DK(finger, q);
             // return J_*50*(fd-f) + 50*Proj*dq0;
             return J_*50*(fd-f) + 50*Proj*dq0;
         }
@@ -575,24 +578,24 @@ namespace WeArt.Components
         // https://learn.microsoft.com/en-us/dotnet/csharp/programming-guide/delegates/using-delegates
         // The first two parameters are types of arguments of the function (time, state) and the last is the return type
         // extra parameters (e.g. closure) as actual arguments to the function (I don't know if it's the right syntax, but it's the most clear to me)
-        private Func<double, Vector<double>, Vector<double>> velocity_control_ode(double cl) {
+        private Func<double, Vector<double>, Vector<double>> velocity_control_ode(int finger, double cl) {
             // This is a lambda function
             return (t, q) =>
             {
-                Vector<double> fd = two_point_arc(0.07f, cl);
+                Vector<double> fd = two_point_arc(finger, trajectory_arc_radii[finger], cl);
                 Vector<double> dq0 = null_space_term(q);
 
-                Matrix<double> J = jacobian(q);
+                Matrix<double> J = jacobian(finger, q);
                 Matrix<double> J_ = J.PseudoInverse();
                 Matrix<double> Proj = I3 - J_*J;
-                Vector<double> f = DK(q);
+                Vector<double> f = DK(finger, q);
                 return J_*50*(fd-f) + 50*Proj*dq0;
             };
             // Vector<double> fd = two_point_arc(0.07f, closure);
             // Vector<double> dq0 = null_space_term(q);
         }
 
-        private Vector<double> sim(Vector<double> q, double closure){
+        private Vector<double> sim(int finger, Vector<double> q, double closure){
             // Euler is fine, but movement in choppy even with 0.001 seconds of fixedDeltaTime
             // Also apparently the physics engine (thus fixedDeltaTime) is affected by interaction with unity editor, e.g. opening Project Settings
             // while game is running momentarly stops th physics engine and euler completely loses it
@@ -600,7 +603,7 @@ namespace WeArt.Components
 
             // Solve ODE instead of relying on Euler. Better numerical accuracy, especially when changing direction (I hope)
             // System is time-invariant, so 0s to fixedDeltaTime is ok
-            Vector<double>[] qnew = RungeKutta.SecondOrder(q, 0.0d, (double)Time.fixedDeltaTime, 20, velocity_control_ode(closure));
+            Vector<double>[] qnew = RungeKutta.SecondOrder(q, 0.0d, (double)Time.fixedDeltaTime, 20, velocity_control_ode(finger, closure));
             return qnew[qnew.Length - 1];
         }
 
@@ -619,11 +622,11 @@ namespace WeArt.Components
         // at cl percentage between them
         // TODO: Optimizi this stuff to compute just one time, or rewrite to support positions as arguments
         // for future use with multiple fingers
-        private Vector<double> two_point_arc(double R, double cl){
-            double xp1 = pExtended.At(0);
-            double yp1 = pExtended.At(1);
-            double xp2 = pCurled.At(0);
-            double yp2 = pCurled.At(1);
+        private Vector<double> two_point_arc(int finger, double R, double cl){
+            double xp1 = pExtended[finger].At(0);
+            double yp1 = pExtended[finger].At(1);
+            double xp2 = pCurled[finger].At(0);
+            double yp2 = pCurled[finger].At(1);
             
             double D = yp2*yp2-yp1*yp1+xp2*xp2-xp1*xp1;
             double E = D/(2*(xp2-xp1));
@@ -641,7 +644,7 @@ namespace WeArt.Components
             double gamma = gamma_end-gamma_start;
 
             // double t = cl;
-            double t = CLOSURE_TO_ARC_T_START + (1-CLOSURE_TO_ARC_T_START-CLOSURE_TO_ARC_T_END)*cl;
+            double t = CLOSURE_TO_ARC_T_START[finger] + (1-CLOSURE_TO_ARC_T_START[finger]-CLOSURE_TO_ARC_T_END[finger])*cl;
             double xArc = R*Sin(gamma_start +gamma*t) + xO;
             double yArc = R*Cos(gamma_start +gamma*t) + yO;
             
@@ -655,57 +658,29 @@ namespace WeArt.Components
         private void FixedUpdate(){          
             
             if(Time.time <= 2.5) return; // Give some time for calibration to finish
-            // if(first){
-            //     Q = V.DenseOfArray(new[]{(double)i_j1_initial.x, (double)i_j2_initial.x, (double)i_j3_initial.x}) * (double)Mathf.Deg2Rad;
-            //     first = false;
-            // }
-            
-            // Move joints between 0 and pi/2 manually
-            // Q = ONES * CLOSURE * 0.5d * Mathf.PI;
 
-            // Compute closure at runtime as a sine function (start extended)
-            // CLOSURE = 0.5d*(1.0d - Cos(0.8d*Time.unscaledTime));
-            // Q = sim(Q, CLOSURE);
-
-            // Take closure from interface, data in [0,1] as parsed by middleware
-            finger_robot_joint_angles[INDEX] = sim(finger_robot_joint_angles[INDEX], _thimbles[1].Closure.Value);
-            
-            // TODO: Hard limit angles to [initial+0, initial+pi/2], otherwise it results in some unnatural manipulator-like
-            // movements, especially with the finger slightly folding the opposite way when extending
-
-            // Sets the rotation to given angles for each joint
-            // For each one, also add the initial value, as it sets the "zero" position
-            // Fix the angles in [0, 360], Unity does not handle well jumps between positive and negative angles and considers angles in [0,360] anyway
-            // Also mantain inital rotation in other axes
-            Quaternion quat = Quaternion.identity;
-            Quaternion quat1 = Quaternion.identity;
-            Quaternion quat2 = Quaternion.identity;
-
-            // quat.eulerAngles = new Vector3(fixAngleDeg(i_j1_initial.x + Mathf.Rad2Deg*Q.At(0)), 0, 0);
-            // quat1.eulerAngles = new Vector3(fixAngleDeg(i_j2_initial.x + Mathf.Rad2Deg*Q.At(1)), 0, 0);
-            // quat2.eulerAngles = new Vector3(fixAngleDeg(i_j3_initial.x + Mathf.Rad2Deg*Q.At(2)), 0, 0);
-
-            Vector<double> Q = finger_robot_joint_angles[INDEX];
-            Vector3 i_j1_initial = finger_joint_initial_rotation[INDEX, 0];
-            Vector3 i_j2_initial = finger_joint_initial_rotation[INDEX, 1];
-            Vector3 i_j3_initial = finger_joint_initial_rotation[INDEX, 2];
-            quat.eulerAngles = new Vector3(fixAngleDeg(i_j1_initial.x + Mathf.Rad2Deg*Q.At(0)), i_j1_initial.y, i_j1_initial.z);
-            quat1.eulerAngles = new Vector3(fixAngleDeg(i_j2_initial.x + Mathf.Rad2Deg*Q.At(1)), i_j2_initial.y, i_j2_initial.z);
-            quat2.eulerAngles = new Vector3(fixAngleDeg(i_j3_initial.x + Mathf.Rad2Deg*Q.At(2)), i_j3_initial.y, i_j3_initial.z);
-            
-            // Hard limit "display" angles (transforms), but not manipulator angles (Q)
-            // quat.eulerAngles = Vector3.Max(i_j1_initial, Vector3.Min(quat.eulerAngles, Vector3.one*110.0f));
-            // quat1.eulerAngles = Vector3.Max(i_j2_initial, Vector3.Min(quat1.eulerAngles, Vector3.one*110.0f));
-            // quat2.eulerAngles = Vector3.Max(i_j3_initial, Vector3.Min(quat2.eulerAngles, Vector3.one*110.0f));
-            
-            finger_transform[INDEX, 0].localRotation = quat;
-            finger_transform[INDEX, 1].localRotation = quat1;
-            finger_transform[INDEX, 2].localRotation = quat2;
+            for(int i = INDEX; i <= PINKY; i++){
+                finger_robot_joint_angles[i] = sim(i, finger_robot_joint_angles[i], _thimbles[FINGER_TO_CLOSURE_INDEX[i]].Closure.Value);
+                
+                Vector<double> Q = finger_robot_joint_angles[i];
+                Vector3 i_j1_initial = finger_joint_initial_rotation[i, 0];
+                Vector3 i_j2_initial = finger_joint_initial_rotation[i, 1];
+                Vector3 i_j3_initial = finger_joint_initial_rotation[i, 2];
+                
+                Quaternion quat = Quaternion.identity;
+                Quaternion quat1 = Quaternion.identity;
+                Quaternion quat2 = Quaternion.identity;
+                quat.eulerAngles = new Vector3(fixAngleDeg(i_j1_initial.x + Mathf.Rad2Deg*Q.At(0)), i_j1_initial.y, i_j1_initial.z);
+                quat1.eulerAngles = new Vector3(fixAngleDeg(i_j2_initial.x + Mathf.Rad2Deg*Q.At(1)), i_j2_initial.y, i_j2_initial.z);
+                quat2.eulerAngles = new Vector3(fixAngleDeg(i_j3_initial.x + Mathf.Rad2Deg*Q.At(2)), i_j3_initial.y, i_j3_initial.z);
+                finger_transform[i, 0].localRotation = quat;
+                finger_transform[i, 1].localRotation = quat1;
+                finger_transform[i, 2].localRotation = quat2;
+            }
         }
         // END MEDICAL
         // -------------------- //
 
-        // MEDICAL: Check this
         /// <summary>
         /// Method that takes care of finger animation
         /// </summary>
