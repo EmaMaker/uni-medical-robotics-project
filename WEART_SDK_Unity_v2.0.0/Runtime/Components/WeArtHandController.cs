@@ -152,7 +152,9 @@ namespace WeArt.Components
         /// Defines the opposite hand in the scene
         /// </summary>
         private WeArtHandController _otherHand;
+        #endregion
 
+        # region MEDICAL: variables+constants definition
         // -------------------- //
         // MEDICAL
         // Variable definition
@@ -214,8 +216,6 @@ namespace WeArt.Components
         static float TWO_PI = Mathf.PI * 2.0f;
         // END MEDICAL
         // -------------------- //
-
-
         #endregion
 
         #region Methods
@@ -494,41 +494,32 @@ namespace WeArt.Components
                 _graspingSystem.UpdateGraspingSystem();
             
         }
-        
-        private double Sin(float f){
-            return (double) Mathf.Sin(f);
-        }
-        private double Sin(double f){
-            return (double) Mathf.Sin((float)f);
-        }
-        private double Cos(float f){
-            return (double) Mathf.Cos(f);
-        }
-        private double Cos(double f){
-            return (double) Mathf.Cos((float)f);
-        }
-        private double Sqrt(float f){
-            return (double) Mathf.Sqrt(f);
-        }
-        private double Sqrt(double f){
-            return (double) Mathf.Sqrt((float)f);
-        }
-        private double Atan2(float y, float x){
-            return (double) Mathf.Atan2(y,x);
-        }
-        private double Atan2(double y, double x){
-            return (double) Mathf.Atan2((float)y, (float)x);
-        }
-        
-        private float fixAngleRad(float a) { 
-            return (a + TWO_PI) % TWO_PI;
-        }
+
+        # region MEDICAL: Trig functions
+
+        // -------------------- //
+        // MEDICAL: Trigonometric functions
+        private double Sin(float f){ return (double) Mathf.Sin(f); }
+        private double Sin(double f){ return (double) Mathf.Sin((float)f); }
+        private double Cos(float f){ return (double) Mathf.Cos(f); }
+        private double Cos(double f){ return (double) Mathf.Cos((float)f); }
+        private double Sqrt(float f){ return (double) Mathf.Sqrt(f); }
+        private double Sqrt(double f){ return (double) Mathf.Sqrt((float)f); }
+        private double Atan2(float y, float x){ return (double) Mathf.Atan2(y,x); }
+        private double Atan2(double y, double x){ return (double) Mathf.Atan2((float)y, (float)x); }
+        // Unity does not handle switching from positive to negative angles very well, which however happens when taking joint angles from the controller
+        // These functions bring angles in the [0, 360) degrees or [0, 2pi) radiants range
+        private float fixAngleRad(float a) { return (a + TWO_PI) % TWO_PI; }
         private float fixAngleRad(double a){ return fixAngleRad((float)a); }
-        private float fixAngleDeg(float a) { 
-            return (a + 360.0f) % 360.0f;
-        }
+        private float fixAngleDeg(float a) { return (a + 360.0f) % 360.0f; }
         private float fixAngleDeg(double a){ return fixAngleDeg((float)a); }
-        /* ---- MEDICAL ---- */
+        # endregion
+        // END MEDICAL
+        // -------------------- //
+
+        # region MEDICAL: Robot manipulator functions
+        // -------------------- //
+        // MEDICAL: Robot manipulator functions
         // Direct kinematics
         private Vector<double> DK(int finger, Vector<double> q){
             double q1 = q.At(0);
@@ -544,6 +535,7 @@ namespace WeArt.Components
             return V.DenseOfArray(new[] {x, y});
         }
 
+        // Jacobian: task is end effector planar position (x, y)
         private Matrix<double> jacobian(int finger, Vector<double> q){
             double q1 = q.At(0);
             double q2 = q.At(1);
@@ -560,6 +552,7 @@ namespace WeArt.Components
             return M.DenseOfArray(matrix);
         }
 
+        // Velocity control. Use this function if using Euler integration
         private Vector<double> velocity_control_euler(int finger, Vector<double> q, double closure){
             Vector<double> fd = two_point_arc(finger, trajectory_arc_radii[finger], closure);
             Vector<double> dq0 = null_space_term(q);
@@ -568,16 +561,17 @@ namespace WeArt.Components
             Matrix<double> J_ = J.PseudoInverse();
             Matrix<double> Proj = I3 - J_*J;
             Vector<double> f = DK(finger, q);
-            // return J_*50*(fd-f) + 50*Proj*dq0;
+
             return J_*50*(fd-f) + 50*Proj*dq0;
         }
 
+        // Velocity control. Use this function if using Math.NET Numerics ODE solver
         // https://stackoverflow.com/questions/54999500/solving-a-system-of-ordinary-differential-equations-using-math-net-numerics
         // This is a delegate
         // https://stackoverflow.com/questions/3624731/what-is-func-how-and-when-is-it-used
         // https://learn.microsoft.com/en-us/dotnet/csharp/programming-guide/delegates/using-delegates
         // The first two parameters are types of arguments of the function (time, state) and the last is the return type
-        // extra parameters (e.g. closure) as actual arguments to the function (I don't know if it's the right syntax, but it's the most clear to me)
+        // extra parameters (e.g. closure) are put as actual arguments to the function (I don't know if it's the right syntax, but it's the most clear to me and it works)
         private Func<double, Vector<double>, Vector<double>> velocity_control_ode(int finger, double cl) {
             // This is a lambda function
             return (t, q) =>
@@ -591,10 +585,9 @@ namespace WeArt.Components
                 Vector<double> f = DK(finger, q);
                 return J_*50*(fd-f) + 50*Proj*dq0;
             };
-            // Vector<double> fd = two_point_arc(0.07f, closure);
-            // Vector<double> dq0 = null_space_term(q);
         }
 
+        // Simulation function
         private Vector<double> sim(int finger, Vector<double> q, double closure){
             // Euler is fine, but movement in choppy even with 0.001 seconds of fixedDeltaTime
             // Also apparently the physics engine (thus fixedDeltaTime) is affected by interaction with unity editor, e.g. opening Project Settings
@@ -613,15 +606,13 @@ namespace WeArt.Components
             double q1 = q.At(0);
             double q2 = q.At(1);
             double q3 = q.At(2);
-            // double dq01 = (4*q.x - Mathf.PI) / (3*Mathf.PI*Mathf.PI);
+
             return -V.DenseOfArray(new[] {4.0d*q1 - Mathf.PI, 4.0d*q2 - Mathf.PI, 4.0d*q3 - Mathf.PI}) / (3.0d*Mathf.PI*Mathf.PI);
         }
 
         // two point arc for trajectory
         // Finds the (portion of the) circle that passes between pExtended and pCurled and finds the exact position
         // at cl percentage between them
-        // TODO: Optimizi this stuff to compute just one time, or rewrite to support positions as arguments
-        // for future use with multiple fingers
         private Vector<double> two_point_arc(int finger, double R, double cl){
             double xp1 = pExtended[finger].At(0);
             double yp1 = pExtended[finger].At(1);
@@ -643,36 +634,38 @@ namespace WeArt.Components
             double gamma_end = Atan2(xp2-xO, yp2-yO);
             double gamma = gamma_end-gamma_start;
 
-            // double t = cl;
             double t = CLOSURE_TO_ARC_T_START[finger] + (1-CLOSURE_TO_ARC_T_START[finger]-CLOSURE_TO_ARC_T_END[finger])*cl;
-            double xArc = R*Sin(gamma_start +gamma*t) + xO;
-            double yArc = R*Cos(gamma_start +gamma*t) + yO;
+            double xArc = R*Sin(gamma_start + gamma*t) + xO;
+            double yArc = R*Cos(gamma_start + gamma*t) + yO;
             
             return V.DenseOfArray(new[]{xArc, yArc});
         }
 
-        // MEDICAL: Move fingers at physics simulation time (simulation time step is fixed)
+        // Simulate and animate fingers at physics simulation time (simulation time step is fixed, animation time step is not)
         // See: https://docs.unity3d.com/6000.1/Documentation/Manual/fixed-updates.html
         // For setting of initial conditions, see Awake()
-        bool first = true;
         private void FixedUpdate(){          
             
             if(Time.time <= 2.5) return; // Give some time for calibration to finish
 
             for(int i = INDEX; i <= PINKY; i++){
                 finger_robot_joint_angles[i] = sim(i, finger_robot_joint_angles[i], _thimbles[FINGER_TO_CLOSURE_INDEX[i]].Closure.Value);
-                
+
+                // Short hand                
                 Vector<double> Q = finger_robot_joint_angles[i];
                 Vector3 i_j1_initial = finger_joint_initial_rotation[i, 0];
                 Vector3 i_j2_initial = finger_joint_initial_rotation[i, 1];
                 Vector3 i_j3_initial = finger_joint_initial_rotation[i, 2];
                 
+                // Create new quaternions
                 Quaternion quat = Quaternion.identity;
                 Quaternion quat1 = Quaternion.identity;
                 Quaternion quat2 = Quaternion.identity;
+                // Assign them using Euler Angles. Keep initial y and z rotation. The joint of the manipulator moves around the x axis, positive clockwise
                 quat.eulerAngles = new Vector3(fixAngleDeg(i_j1_initial.x + Mathf.Rad2Deg*Q.At(0)), i_j1_initial.y, i_j1_initial.z);
                 quat1.eulerAngles = new Vector3(fixAngleDeg(i_j2_initial.x + Mathf.Rad2Deg*Q.At(1)), i_j2_initial.y, i_j2_initial.z);
                 quat2.eulerAngles = new Vector3(fixAngleDeg(i_j3_initial.x + Mathf.Rad2Deg*Q.At(2)), i_j3_initial.y, i_j3_initial.z);
+                // Set quaternions as rotation of each joint
                 finger_transform[i, 0].localRotation = quat;
                 finger_transform[i, 1].localRotation = quat1;
                 finger_transform[i, 2].localRotation = quat2;
@@ -680,6 +673,7 @@ namespace WeArt.Components
         }
         // END MEDICAL
         // -------------------- //
+        #endregion
 
         /// <summary>
         /// Method that takes care of finger animation
