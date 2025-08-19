@@ -6,6 +6,8 @@ The objective of the project is to execute a grasping task in a VR environment i
 
 In particular, the vanilla WEART SDK animates the hand interpolating between a _open_, _abducted_ and _closed_ animation, depending on a _closure_ parameter between [0, 1]. Each finger has its own _closure_ parameter, where 0 corresponds to a completely extended finger and 1 completely curled finger. Additionally, the thumb has an _abduction_ parameter, although its value is handled as another _closure_ in the communication between Unity and the [middleware](#middleware).
 
+Our objective is instead to consider each finger as it were a robotic manipulator (e.g. a 3R planar robot for the index and middle fingers) and animate it using inverse kinematics. At the moment, this is achieved by tracking an arc of circle trajectory between the extended and curled position of the finger, using velocity control. Furthermore, a null space term is used to keep the joint angles in [0, PI/2], so to ensure a natural movement for the fingers.
+
 In a second moment, the hand will be tracked with the inbuilt cameras of the VR headset instead of the haptic interface.
 
 ## WEART Middleware and communication with Unity
