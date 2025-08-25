@@ -313,7 +313,8 @@ namespace WeArt.Components
                     finger_joint_initial_position[j,k] = finger_transform[j,k].position;
                     
                 }
-                finger_robot_joint_angles[j] = V.DenseOfArray(new[]{(double)finger_joint_initial_rotation[j,0].x, (double)finger_joint_initial_rotation[j,1].x, (double)finger_joint_initial_rotation[j,2].x}) * (double)Mathf.Deg2Rad;
+                //finger_robot_joint_angles[j] = V.DenseOfArray(new[]{(double)finger_joint_initial_rotation[j,0].x, (double)finger_joint_initial_rotation[j,1].x, (double)finger_joint_initial_rotation[j,2].x}) * (double)Mathf.Deg2Rad;
+                finger_robot_joint_angles[j] = V.DenseOfArray(new[] { 0.0d, 0.0d, 0.0d });
 
                 // Link lengths
                 finger_link_length[j,0] = Vector3.Distance(finger_joint_initial_position[j,0], finger_joint_initial_position[j,1]);
