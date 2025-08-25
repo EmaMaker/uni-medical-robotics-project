@@ -187,7 +187,7 @@ namespace WeArt.Components
         static Vector<double>[] finger_robot_joint_angles = new Vector<double>[TOTAL_FINGERS];
         
         // Radii for arc of circle trajctories for IK
-        static readonly double[] trajectory_arc_radii = {0.8d, 0.068d, 0.072d, 0.08d, 0.052};
+        static readonly double[] trajectory_arc_radii = {0.08d, 0.068d, 0.072d, 0.08d, 0.052};
         // Map finger to used index in _thimbles[i]
         // For TouchDiver G1, middle, ring and pinky all map to the middle
         static readonly int[] FINGER_TO_CLOSURE_INDEX = {0, 1, 2, 2, 2};
@@ -672,11 +672,9 @@ namespace WeArt.Components
         // Simulate and animate fingers at physics simulation time (simulation time step is fixed, animation time step is not)
         // See: https://docs.unity3d.com/6000.1/Documentation/Manual/fixed-updates.html
         // For setting of initial conditions, see Awake()
-        private void FixedUpdate(){          
-            
-            if(Time.time <= 2.5) return; // Give some time for calibration to finish
+        private void FixedUpdate(){
 
-            for(int i = INDEX; i <= PINKY; i++){
+            for(int i = THUMB; i <= PINKY; i++){
                 finger_robot_joint_angles[i] = sim(i, finger_robot_joint_angles[i], _thimbles[FINGER_TO_CLOSURE_INDEX[i]].Closure.Value);
 
                 // Short hand                
