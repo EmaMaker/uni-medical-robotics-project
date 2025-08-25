@@ -44,10 +44,10 @@ Then restart Unity and in the toolbar a new submenu named NuGet will appear. Go 
 # To Do
 
 - Unity
-    - [ ] Animation in Unity using IK instead of interpolation of Animation States
+    - [x] Animation in Unity using IK instead of interpolation of Animation States
         - [x] Index
         - [x] Middle + Other fingers
-        - [ ] Thumb
+        - [x] Thumb
     - [ ] Grasping
 
 - Camera
