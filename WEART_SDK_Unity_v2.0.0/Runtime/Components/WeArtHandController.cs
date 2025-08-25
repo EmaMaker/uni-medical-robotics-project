@@ -276,7 +276,7 @@ namespace WeArt.Components
             CURRENT_HAND = gameObject.name.Equals("WEARTRightHand") ? 1 : 0;
             handString  = gameObject.name.Equals("WEARTRightHand") ? "R" : "L";
             handStringLong  = gameObject.name.Equals("WEARTRightHand") ? "Right" : "Left";
-            string debug_string = $"{handStringLong[CURRENT_HAND]}  hand:\n";
+            string debug_string = $"{handStringLong}  hand:\n";
             
             // Both hands use the suffix R for single joints, except the point with colliders, etc. that use proper Right and Left
             // HandRoot > DEF-hand.*
