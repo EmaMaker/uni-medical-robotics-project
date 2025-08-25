@@ -688,8 +688,10 @@ namespace WeArt.Components
                 Quaternion quat1 = Quaternion.identity;
                 Quaternion quat2 = Quaternion.identity;
                 // Assign them using Euler Angles. Keep initial y and z rotation. The joint of the manipulator moves around the x axis, positive clockwise
-                quat.eulerAngles = new Vector3(fixAngleDeg(i_j1_initial.x + Mathf.Rad2Deg*Q.At(0)), i_j1_initial.y, i_j1_initial.z);
-                quat1.eulerAngles = new Vector3(fixAngleDeg(i_j2_initial.x + Mathf.Rad2Deg*Q.At(1)), i_j2_initial.y, i_j2_initial.z);
+                if (i == THUMB) quat.eulerAngles = new Vector3(fixAngleDeg(i_j1_initial.x + Mathf.Rad2Deg * Q.At(0)), i_j1_initial.y, 50f * _thimbles[FINGER_TO_CLOSURE_INDEX[THUMB]].Abduction.Value );
+                else quat.eulerAngles = new Vector3(fixAngleDeg(i_j1_initial.x + Mathf.Rad2Deg * Q.At(0)), i_j1_initial.y, i_j1_initial.z);
+                
+                quat1.eulerAngles = new Vector3(fixAngleDeg(i_j2_initial.x + Mathf.Rad2Deg * Q.At(1)), i_j2_initial.y, i_j2_initial.z);
                 quat2.eulerAngles = new Vector3(fixAngleDeg(i_j3_initial.x + Mathf.Rad2Deg*Q.At(2)), i_j3_initial.y, i_j3_initial.z);
                 // Set quaternions as rotation of each joint
                 finger_transform[i, 0].localRotation = quat;
