@@ -601,7 +601,8 @@ namespace WeArt.Components
                 Matrix<double> J_ = J.PseudoInverse();
                 Matrix<double> Proj = I3 - J_*J;
                 Vector<double> f = DK(finger, q);
-                return J_*50*(fd-f) + 50*Proj*dq0;
+                Vector<double> dq = J_*50*(fd-f) + 50*Proj*dq0;
+                return dq;//.PointwiseMinimum(20).PointwiseMaximum(-20);
             };
         }
 
@@ -615,7 +616,8 @@ namespace WeArt.Components
             // Solve ODE instead of relying on Euler. Better numerical accuracy, especially when changing direction (I hope)
             // System is time-invariant, so 0s to fixedDeltaTime is ok
             Vector<double>[] qnew = RungeKutta.SecondOrder(q, 0.0d, (double)Time.fixedDeltaTime, 20, velocity_control_ode(finger, closure));
-            return qnew[qnew.Length - 1];
+            Vector<double>  pippo= qnew[qnew.Length - 1];
+            return pippo; ;//.PointwiseMinimum(MathF.PI).PointwiseMaximum(0);
         }
 
         // TODO: since we are adding a constant to each joint to set the zero position, make the
@@ -672,10 +674,21 @@ namespace WeArt.Components
         // Simulate and animate fingers at physics simulation time (simulation time step is fixed, animation time step is not)
         // See: https://docs.unity3d.com/6000.1/Documentation/Manual/fixed-updates.html
         // For setting of initial conditions, see Awake()
-        private void FixedUpdate(){
+        double zk = 0;
+        private void FixedUpdate()
+        {
 
-            for(int i = THUMB; i <= PINKY; i++){
-                finger_robot_joint_angles[i] = sim(i, finger_robot_joint_angles[i], _thimbles[FINGER_TO_CLOSURE_INDEX[i]].Closure.Value);
+            string s = "Robot joint values: \n";
+            //for (int i = THUMB; i <= PINKY; i++)
+            int i = INDEX;
+            {
+                double clos_filtrata = 0.3436 * zk;
+                zk = 0.8282 * zk + 0.5 * _thimbles[FINGER_TO_CLOSURE_INDEX[i]].Closure.Value;
+                finger_robot_joint_angles[i] = sim(i, finger_robot_joint_angles[i], clos_filtrata);
+                s += finger_name[i] + ":\n" +
+                    "\t J1: " + finger_robot_joint_angles[i].At(0) + "\n" +
+                    "\t J2: " + finger_robot_joint_angles[i].At(1) + "\n" +
+                    "\t J3: " + finger_robot_joint_angles[i].At(2) + "\n";
 
                 // Short hand                
                 Vector<double> Q = finger_robot_joint_angles[i];
@@ -698,7 +711,9 @@ namespace WeArt.Components
                 finger_transform[i, 1].localRotation = quat1;
                 finger_transform[i, 2].localRotation = quat2;
             }
+            WeArtLog.Log(s);
         }
+
         // END MEDICAL
         // -------------------- //
         #endregion
