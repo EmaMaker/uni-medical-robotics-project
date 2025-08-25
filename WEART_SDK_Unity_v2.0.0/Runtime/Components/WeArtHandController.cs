@@ -192,6 +192,22 @@ namespace WeArt.Components
         // For TouchDiver G1, middle, ring and pinky all map to the middle
         static readonly int[] FINGER_TO_CLOSURE_INDEX = {0, 1, 2, 2, 2};
 
+        // Define the minimum and maximum degrees for each finger (5) and thimble (3)
+        // First index dictates the finger, second index the thimble
+        static readonly double PI_HALF = MathF.PI * 0.5d;
+
+        static double[,] FINGER_MAX_ANG = { { 30.0d * Mathf.Deg2Rad, 30.0d * Mathf.Deg2Rad, PI_HALF }, 
+                                            { PI_HALF, PI_HALF, PI_HALF }, 
+                                            { PI_HALF, PI_HALF, PI_HALF }, 
+                                            { PI_HALF, PI_HALF, PI_HALF }, 
+                                            { PI_HALF, PI_HALF, PI_HALF } };
+
+        static double[,] FINGER_MIN_ANG = { { 0, 0, 0 },
+                                            { 0, 0, 0 },
+                                            { 0, 0, 0 },
+                                            { 0, 0, 0 },
+                                            { 0, 0, 0 } };
+
         // The arc of circle is parametrized as a curve by parameter t,[0,1]
         // where 0 is completely extended (q=0) and 1 completely curled (q=pi/2)
         // however this is made on a skeleton of the hand, and the visual result is not pleasant when looking
@@ -326,9 +342,10 @@ namespace WeArt.Components
                 double L1 = finger_link_length[j, 0];
                 double L2 = finger_link_length[j, 1];
                 double L3 = finger_link_length[j, 2];
-                
-                pExtended[j] = V.DenseOfArray(new[] {0.0d, L1+L2+L3});
-                pCurled[j] = V.DenseOfArray(new[] {L1-L3, -L2});
+
+                pExtended[j] = DK(j, V.DenseOfArray(new[] { FINGER_MIN_ANG[j, 0], FINGER_MIN_ANG[j, 1], FINGER_MIN_ANG[j, 2] }));
+                pCurled[j] = DK(j, V.DenseOfArray(new[] { FINGER_MAX_ANG[j, 0], FINGER_MAX_ANG[j, 1], FINGER_MAX_ANG[j, 2] }));
+
 
                 debug_string += $"{finger_name_end[j]}:\n\tLink lengths: L1: {finger_link_length[j,0], 3}, L2: {finger_link_length[j,1]}, L3: {finger_link_length[j,2]}" +
                                 $"\n\tInitial rotations: L1: {finger_joint_initial_rotation[j,0]}, L2: {finger_joint_initial_rotation[j,1]}, L3: {finger_joint_initial_rotation[j,2]}\n";
@@ -556,7 +573,7 @@ namespace WeArt.Components
         // Velocity control. Use this function if using Euler integration
         private Vector<double> velocity_control_euler(int finger, Vector<double> q, double closure){
             Vector<double> fd = two_point_arc(finger, trajectory_arc_radii[finger], closure);
-            Vector<double> dq0 = null_space_term(q);
+            Vector<double> dq0 = null_space_term(finger, q);
 
             Matrix<double> J = jacobian(finger, q);
             Matrix<double> J_ = J.PseudoInverse();
@@ -578,7 +595,7 @@ namespace WeArt.Components
             return (t, q) =>
             {
                 Vector<double> fd = two_point_arc(finger, trajectory_arc_radii[finger], cl);
-                Vector<double> dq0 = null_space_term(q);
+                Vector<double> dq0 = null_space_term(finger, q);
 
                 Matrix<double> J = jacobian(finger, q);
                 Matrix<double> J_ = J.PseudoInverse();
@@ -603,12 +620,22 @@ namespace WeArt.Components
 
         // TODO: since we are adding a constant to each joint to set the zero position, make the
         // max joint slightly less than 
-        private Vector<double> null_space_term(Vector<double> q){
+        private Vector<double> null_space_term(int finger, Vector<double> q){
             double q1 = q.At(0);
             double q2 = q.At(1);
             double q3 = q.At(2);
 
-            return -V.DenseOfArray(new[] {4.0d*q1 - Mathf.PI, 4.0d*q2 - Mathf.PI, 4.0d*q3 - Mathf.PI}) / (3.0d*Mathf.PI*Mathf.PI);
+            //WeArtLog.Log($"{q1}, {q2}, {q3}");
+
+            double[] dq0 = { ( FINGER_MAX_ANG[finger,0] - 2*q1 + FINGER_MIN_ANG[finger,0] ) / ( 6 * ( FINGER_MAX_ANG[finger, 0] - FINGER_MIN_ANG[finger,0] ) * (FINGER_MAX_ANG[finger, 0] - FINGER_MIN_ANG[finger, 0])  ),
+                             ( FINGER_MAX_ANG[finger,1] - 2*q2 + FINGER_MIN_ANG[finger,1] ) / ( 6 * ( FINGER_MAX_ANG[finger, 1] - FINGER_MIN_ANG[finger,1] ) * (FINGER_MAX_ANG[finger, 1] - FINGER_MIN_ANG[finger, 1])  ),
+                             ( FINGER_MAX_ANG[finger,2] - 2*q3 + FINGER_MIN_ANG[finger,2] ) / ( 6 * ( FINGER_MAX_ANG[finger, 2] - FINGER_MIN_ANG[finger,2] ) * (FINGER_MAX_ANG[finger, 2] - FINGER_MIN_ANG[finger, 2])  )
+                            };
+
+            return V.DenseOfArray(dq0);
+        
+        
+
         }
 
         // two point arc for trajectory
