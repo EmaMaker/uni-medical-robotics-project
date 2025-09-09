@@ -615,7 +615,16 @@ namespace WeArt.Components
             // Solve ODE instead of relying on Euler. Better numerical accuracy, especially when changing direction (I hope)
             // System is time-invariant, so 0s to fixedDeltaTime is ok
             Vector<double>[] qnew = RungeKutta.SecondOrder(q, 0.0d, (double)Time.fixedDeltaTime, 20, velocity_control_ode(finger, closure));
-            return qnew[qnew.Length - 1];
+
+            // Saturate joints to stay within limits
+            // Particularly useful to filter out impulsive jumps from closure=0 to closure=1 caused by ill values sent by the interface
+            // Saturating only the last sample of the simulation is ok, as it is the one used to animate the hand and as initial condition to the next simulation step
+            double[] r1 = Enumerable.Range(0, FINGER_MIN_ANG.GetLength(1)).Select(x => FINGER_MIN_ANG[finger, x]).ToArray();
+            double[] r2 = Enumerable.Range(0, FINGER_MAX_ANG.GetLength(1)).Select(x => FINGER_MAX_ANG[finger, x]).ToArray();
+            Vector<double> limits_q_min = V.DenseOfArray(r1);
+            Vector<double> limits_q_max = V.DenseOfArray(r2);
+
+            return qnew[qnew.Length - 1].PointwiseMinimum(limits_q_max).PointwiseMaximum(limits_q_min);
         }
 
         // TODO: since we are adding a constant to each joint to set the zero position, make the
