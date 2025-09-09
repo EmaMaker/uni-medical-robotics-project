@@ -48,7 +48,7 @@ Then restart Unity and in the toolbar a new submenu named NuGet will appear. Go 
         - [x] Index
         - [x] Middle + Other fingers
         - [x] Thumb
-    - [ ] Grasping
+    - [x] Grasping (WeART Grasping works with our modifications)
 
 - Camera
     - [ ] Machine vision
