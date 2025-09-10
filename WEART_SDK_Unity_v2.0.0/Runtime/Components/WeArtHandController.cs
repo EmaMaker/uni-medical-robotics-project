@@ -186,8 +186,6 @@ namespace WeArt.Components
         static Vector3[,] finger_joint_initial_rotation = new Vector3[TOTAL_FINGERS,3];
         static Vector<double>[] finger_robot_joint_angles = new Vector<double>[TOTAL_FINGERS];
         
-        // Radii for arc of circle trajctories for IK
-        static readonly double[] trajectory_arc_radii = {0.08d, 0.068d, 0.072d, 0.08d, 0.052};
         // Map finger to used index in _thimbles[i]
         // For TouchDiver G1, middle, ring and pinky all map to the middle
         static readonly int[] FINGER_TO_CLOSURE_INDEX = {0, 1, 2, 2, 2};
@@ -572,7 +570,7 @@ namespace WeArt.Components
 
         // Velocity control. Use this function if using Euler integration
         private Vector<double> velocity_control_euler(int finger, Vector<double> q, double closure){
-            Vector<double> fd = two_point_arc(finger, trajectory_arc_radii[finger], closure);
+            Vector<double> fd = cardioid(finger, closure);
             Vector<double> dq0 = null_space_term(finger, q);
 
             Matrix<double> J = jacobian(finger, q);
@@ -594,7 +592,7 @@ namespace WeArt.Components
             // This is a lambda function
             return (t, q) =>
             {
-                Vector<double> fd = two_point_arc(finger, trajectory_arc_radii[finger], cl);
+                Vector<double> fd = cardioid(finger, cl);
                 Vector<double> dq0 = null_space_term(finger, q);
 
                 Matrix<double> J = jacobian(finger, q);
@@ -650,32 +648,17 @@ namespace WeArt.Components
         // two point arc for trajectory
         // Finds the (portion of the) circle that passes between pExtended and pCurled and finds the exact position
         // at cl percentage between them
-        private Vector<double> two_point_arc(int finger, double R, double cl){
-            double xp1 = pExtended[finger].At(0);
-            double yp1 = pExtended[finger].At(1);
-            double xp2 = pCurled[finger].At(0);
-            double yp2 = pCurled[finger].At(1);
-            
-            double D = yp2*yp2-yp1*yp1+xp2*xp2-xp1*xp1;
-            double E = D/(2*(xp2-xp1));
-            double C = (yp1-yp2)/(xp2-xp1);
-            
-            double a = C*C + 1;
-            double b = 2*(E*C - E*C*xp1 - yp1);
-            double c = E*E - R*R + xp1*xp1 + yp1*yp1 -2*xp1*E;
-            
-            double yO = (-b - Sqrt(b*b-4*a*c))/(2*a);
-            double xO = E+yO*C;
-        
-            double gamma_start = Atan2(xp1-xO, yp1-yO);
-            double gamma_end = Atan2(xp2-xO, yp2-yO);
-            double gamma = gamma_end-gamma_start;
+        private Vector<double> cardioid(int finger, double cl){
+            double L1 = finger_link_length[finger, 0];
+            double L2 = finger_link_length[finger, 1];
+            double L3 = finger_link_length[finger, 2];
 
-            double t = CLOSURE_TO_ARC_T_START[finger] + (1-CLOSURE_TO_ARC_T_START[finger]-CLOSURE_TO_ARC_T_END[finger])*cl;
-            double xArc = R*Sin(gamma_start + gamma*t) + xO;
-            double yArc = R*Cos(gamma_start + gamma*t) + yO;
-            
-            return V.DenseOfArray(new[]{xArc, yArc});
+            double tfin = Atan2(L1+2*L2+L3, L3-L1);
+            double t = tfin*(1-cl);
+            double a = 0.5*(L3-L1)/( (1-Cos(tfin))*Cos(tfin) );
+            double x = L1-L3 + 2*a*(1-Cos(t))*Cos(t);
+            double y = -L2 + 2*a*(1-Cos(t))*Sin(t);
+            return V.DenseOfArray(new[]{x,y});
         }
 
         // Simulate and animate fingers at physics simulation time (simulation time step is fixed, animation time step is not)
