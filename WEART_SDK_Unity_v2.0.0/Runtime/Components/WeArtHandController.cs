@@ -206,6 +206,7 @@ namespace WeArt.Components
                                             { 0, 0, 0 },
                                             { 0, 0, 0 } };
 
+        static float[] FINGER_SPLAY = {0.0f, -7f, 7f, 10f, 15f};
         // The arc of circle is parametrized as a curve by parameter t,[0,1]
         // where 0 is completely extended (q=0) and 1 completely curled (q=pi/2)
         // however this is made on a skeleton of the hand, and the visual result is not pleasant when looking
@@ -683,8 +684,7 @@ namespace WeArt.Components
                 Quaternion quat2 = Quaternion.identity;
                 // Assign them using Euler Angles. Keep initial y and z rotation. The joint of the manipulator moves around the x axis, positive clockwise
                 if (i == THUMB) quat.eulerAngles = new Vector3(fixAngleDeg(i_j1_initial.x + Mathf.Rad2Deg * Q.At(0)), i_j1_initial.y, 50f * _thimbles[FINGER_TO_CLOSURE_INDEX[THUMB]].Abduction.Value );
-                else quat.eulerAngles = new Vector3(fixAngleDeg(i_j1_initial.x + Mathf.Rad2Deg * Q.At(0)), i_j1_initial.y, i_j1_initial.z);
-                
+                else quat.eulerAngles = new Vector3(fixAngleDeg(i_j1_initial.x + Mathf.Rad2Deg * Q.At(0)), i_j1_initial.y, i_j1_initial.z + FINGER_SPLAY[i]*_thimbles[FINGER_TO_CLOSURE_INDEX[i]].Closure.Value);       
                 quat1.eulerAngles = new Vector3(fixAngleDeg(i_j2_initial.x + Mathf.Rad2Deg * Q.At(1)), i_j2_initial.y, i_j2_initial.z);
                 quat2.eulerAngles = new Vector3(fixAngleDeg(i_j3_initial.x + Mathf.Rad2Deg*Q.At(2)), i_j3_initial.y, i_j3_initial.z);
                 // Set quaternions as rotation of each joint
