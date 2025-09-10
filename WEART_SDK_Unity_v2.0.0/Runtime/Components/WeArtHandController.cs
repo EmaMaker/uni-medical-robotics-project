@@ -214,7 +214,7 @@ namespace WeArt.Components
         // t that parametrizes the trajectory and how much to "cut" so that the animation of the real hand never fully matches that
         // of the skeleton hand
         static double[] CLOSURE_TO_ARC_T_START = {0.0d, 0.0d, 0.0d, 0.0d, 0.0d};
-        static double[] CLOSURE_TO_ARC_T_END = {0.0d, 0.0d, 0.0d, 0.0d, 0.0d};
+        static double[] CLOSURE_TO_ARC_T_END = {0.8d, 0.8d, 0.8d, 0.8d, 0.8d};
         // To be properly calibrated with interface
         // static double[] CLOSURE_TO_ARC_T_START = {0.0d, 0.006d, 0.008d, 0.004d, 0.0d};
         // static double[] CLOSURE_TO_ARC_T_END = {0.0d, 0.13d, 0.16d, 0.16d, 0.11d};
@@ -654,7 +654,9 @@ namespace WeArt.Components
             double L3 = finger_link_length[finger, 2];
 
             double tfin = Atan2(L1+2*L2+L3, L3-L1);
-            double t = tfin*(1-cl);
+            double t_ = CLOSURE_TO_ARC_T_START[finger] + (CLOSURE_TO_ARC_T_END[finger] - CLOSURE_TO_ARC_T_START[finger])*cl;
+            double t = tfin*(1-t_);
+            
             double a = 0.5*(L3-L1)/( (1-Cos(tfin))*Cos(tfin) );
             double x = L1-L3 + 2*a*(1-Cos(t))*Cos(t);
             double y = -L2 + 2*a*(1-Cos(t))*Sin(t);
