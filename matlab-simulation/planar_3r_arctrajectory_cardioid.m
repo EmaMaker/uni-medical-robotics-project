@@ -2,7 +2,7 @@ clc
 clear
 
 %% preliminary computations and plots
-global L1 L2 L3 L
+global L1 L2 L3 L MAXT
 global xExtended yExtended xCurled yCurled
 global angle angleE angleC xM yM R
 
@@ -11,7 +11,7 @@ global angle angleE angleC xM yM R
 L1 = 0.0435;
 L2 = 0.0333;
 L3 = 0.0204;
-R=0.068;
+MAXT = pi;
 
 % middle
 % L1 = 0.0468
@@ -56,17 +56,6 @@ yExtended=L1+L2+L3;
 xM = 0.5*(xCurled+xExtended)
 yM = 0.5*(yCurled+yExtended)
 
-% R = 0.5*sqrt((xExtended-xCurled)^2 + (yExtended-yCurled)^2);
-% 
-% angleE = atan2(yExtended-yM, xExtended-xM)
-% angleC = atan2(yCurled-yM, xCurled-xM)
-% angle = angleE - angleC;
-
-% xTrj = -R*cos(angleE + angle*closure) + xM;
-% yTrj = -R*sin(angleE + angle*closure) + yM;
-% xTrj = R*sin(pi*closure);
-% yTrj = R*cos(pi*closure) +yM;
-
 syms q1 q2 q3 real
 global Jtask q tfin
 
@@ -110,21 +99,8 @@ plot(xExtended,yExtended,'Marker','*','MarkerSize',10)
 plot(xCurled, yCurled, 'Marker','*','MarkerSize',10)
 plot(xM, yM, 'Marker', 'x', 'MarkerSize',20)
 
-% arc to be traced by the finger
-%plot(xTrj(:), yTrj(:), 'LineStyle','-.','LineWidth', 4);
-%plot(xTrj(:), yTrj(:), 'Marker','+', 'MarkerSize', 40);
-
-P = two_point_arc(R, closure)
+P = cardioid(closure);
 plot(P(1,:), P(2,:), 'LineStyle','-.','LineWidth', 4);
-
-%line([xM, xM+R*cos(angleE)], [yM, yM+R*sin(angleE)])
-%line([xM, xM+R*cos(angleC)], [yM, yM+R*sin(angleC)])
-
-% for k=1:length(c)
-%     [d, alpha] = closure_to_distance(r,c(k));
-%     line([0,d*cos(alpha)], [0,d*sin(alpha)]);
-% end
-%legend()
 
 grid minor;
 
@@ -152,97 +128,16 @@ for k=1:length(t)
     pause(0.01)
 end
 
-% lines = [];
-% for k=1:length(closure)
-%     %if ~eq(mod(k, 10), 0)
-%     %    continue
-%     %end
-% 
-%     delete(lines)
-%     lines = draw_robot(ones(3,1)*pi/2*closure(k));
-%     pause(0.01)
-% end
-
-%draw_robot(ones(3,1)*pi/2)
-
-% figure()
-% pp = [];
-% for k=1:length(x)
-%     pp = [pp, double(subs(p, q', x(k, :)))];
-% end
-% hold on
-% [d, ~] = closure_to_distance(0.08, t/tfin);
-% plot(t, d)
-% plot(t, pp)
-% figure()
-% hold on
-% plot(t, x(:,1))
-% plot(t, x(:,2))
-% plot(t, x(:,3))
-
 %% Functions
-function [P, gamma, gamma_start, gamma_end] =two_point_arc(R, cl)
-    global xExtended yExtended xCurled yCurled
-
-    xp1 = xExtended;
-    yp1 = yExtended;
-    xp2 = xCurled;
-    yp2 = yCurled;
+function P =cardioid(cl)
+    global L1 L2 L3
     
-    D = yp2^2-yp1^2+xp2^2-xp1^2;
-    E = D/(2*(xp2-xp1));
-    C = (yp1-yp2)/(xp2-xp1);
-    
-    a = C^2 + 1;
-    b = 2*(E*C - E*C*xp1 - yp1);
-    c = E^2 - R^2 + xp1^2 + yp1^2 -2*xp1*E;
-    
-    yO = (-b - sqrt(b^2-4*a*c))/(2*a);
-    xO = E+yO*C;
-   
-    gamma_start = atan2(xExtended-xO, yExtended-yO);
-    gamma_end = atan2(xCurled-xO, yCurled-yO);
-    gamma = gamma_end-gamma_start;
-    xArc = R*sin(gamma_start +gamma*cl) + xO;
-    yArc = R*cos(gamma_start +gamma*cl) + yO;
-    %gamma = gamma_start-gamma_end;
-    %xArc = R*sin(gamma_end+gamma*cl) + xO;
-    %yArc = R*cos(gamma_end +gamma*cl) + yO;
-    P=[xArc;yArc];
-end
-
-function [P, dP, gamma, gamma_start, gamma_end] =two_point_arc_with_tangent(R, cl)
-    global xExtended yExtended xCurled yCurled
-
-    xp1 = xExtended;
-    yp1 = yExtended;
-    xp2 = xCurled;
-    yp2 = yCurled;
-    
-    D = yp2^2-yp1^2+xp2^2-xp1^2;
-    E = D/(2*(xp2-xp1));
-    C = (yp1-yp2)/(xp2-xp1);
-    
-    a = C^2 + 1;
-    b = 2*(E*C - E*C*xp1 - yp1);
-    c = E^2 - R^2 + xp1^2 + yp1^2 -2*xp1*E;
-    
-    yO = (-b - sqrt(b^2-4*a*c))/(2*a);
-    xO = E+yO*C;
-   
-    gamma_start = atan2(xExtended-xO, yExtended-yO);
-    gamma_end = atan2(xCurled-xO, yCurled-yO);
-    gamma = gamma_end-gamma_start;
-    xArc = R*sin(gamma_start +gamma*cl) + xO;
-    yArc = R*cos(gamma_start +gamma*cl) + yO;
-
-    dxArc = R*cos(gamma_start + gamma*cl)*cl;
-    dyArc = -R*sin(gamma_start + gamma*cl)*cl;
-    %gamma = gamma_start-gamma_end;
-    %xArc = R*sin(gamma_end+gamma*cl) + xO;
-    %yArc = R*cos(gamma_end +gamma*cl) + yO;
-    P=[xArc;yArc];
-    dP = [dxArc; dyArc];
+    tfin = atan2(L1+2*L2+L3, L3-L1);
+    t = tfin*(ones(size(cl))-cl);
+    a = 0.5*(L3-L1)/ ( (1-cos(tfin)) *cos(tfin) );
+    x = L1-L3 + 2*a*(1-cos(t)).*cos(t);
+    y = -L2 + 2*a*(1-cos(t)).*sin(t);
+    P = [x; y];
 end
 
 function lines=draw_robot(q)
@@ -281,30 +176,9 @@ function dx=sim(t, x)
         (4*x(2) - pi)/(3*pi^2);
         (4*x(3) - pi)/(3*pi^2)
         ];
-    % max at 80°
-    % dx0 = -[
-    %     (27*x(1) - 6*pi)/(16*pi^2);
-    %     (27*x(2) - 6*pi)/(16*pi^2);
-    %     (27*x(3) - 6*pi)/(16*pi^2)
-    %     ];
-    %dx = dx0 + J_*(1500*(two_point_arc(0.08, t/tfin)-f(x)) - 15000*J*dx0);
-    
-    % smaller coeffients -> lower sim time
-    %dx = 200*dx0 + J_*(10*(two_point_arc(0.08, t/tfin)-f(x)) - 200*J*dx0);
 
-    % alternative to computation of null space
-    [P, dP, ~, ~, ~] = two_point_arc_with_tangent(R, cl);
+    P = cardioid(cl);
     dx = J_*(50*(P-f(x))) + 120*(eye(3) - J_*J)*dx0;
-
-    % crazy thought: keeping the joints within limits is the first task,
-    % following the trajectory is in the null space
-    % dx = diag([2, 20, 2])*dx0 + 50*J_*(P-f(x)); % slightly less crap
-    %dx = 5*dx0 + 500*(eye(3) - J_*J)*J_*(dP + 50*(P-f(x))); % this is crap
-        
-    %dx = J_*1500*(two_point_arc(0.08, t/tfin)-f(x)) ;
-    
-    % s = SNS;
-    % dx = s.sns_vel(x, J, 50*(P-f(x)), [], s.limits_specular(5*ones(3,1)), [], 1e-3);
 end
 
 % DK

@@ -8,10 +8,10 @@ global angle angleE angleC xM yM R
 
 % index
 % lengths
-L1 = 0.0435;
-L2 = 0.0333;
-L3 = 0.0204;
-R=0.068;
+% L1 = 0.0435;
+% L2 = 0.0333;
+% L3 = 0.0204;
+% R=0.068
 
 % middle
 % L1 = 0.0468
@@ -34,21 +34,17 @@ R=0.068;
 % R = 0.052
 
 % thumb
-% L1 = 0.0461
-% L2 = 0.0414
-% L3 = 0.0241
-% R = 0.08;
-%v=f([deg2rad(40); deg2rad(50); pi/2]);
-v = f(ones(3,1)*pi*0.5);
-xCurled = v(1);
-yCurled = v(2);
+L1 = 0.0461
+L2 = 0.0414
+L3 = 0.0241
+R = 0.08;
 
 L=L1+L2+L3;
 
 
 closure = 0:0.01:1;
-xExtended=0;
-yExtended=L1+L2+L3;
+xExtended=0
+yExtended=L1+L2+L3
 
 %xCurled=L1-L3
 %yCurled=-L2
@@ -129,7 +125,7 @@ plot(P(1,:), P(2,:), 'LineStyle','-.','LineWidth', 4);
 grid minor;
 
 %% simulation
-tfin = 2;
+tfin = 3;
 dt=1e-3;
 x0 = zeros([3, 1]);
 %x0=ones([3,1])*pi/2;
@@ -265,6 +261,7 @@ end
 % simulation
 function dx=sim(t, x)
     global Jtask q tfin R
+    
 
     J = double(subs(Jtask, q, x));
     J_ = pinv(J);
@@ -294,17 +291,14 @@ function dx=sim(t, x)
 
     % alternative to computation of null space
     [P, dP, ~, ~, ~] = two_point_arc_with_tangent(R, cl);
-    dx = J_*(50*(P-f(x))) + 120*(eye(3) - J_*J)*dx0;
+    %dx = J_*(50*(P-f(x))) + 50*(eye(3) - J_*J)*dx0;
 
     % crazy thought: keeping the joints within limits is the first task,
     % following the trajectory is in the null space
-    % dx = diag([2, 20, 2])*dx0 + 50*J_*(P-f(x)); % slightly less crap
+    dx = diag([2, 20, 2])*dx0 + 50*J_*(P-f(x)); % slightly less crap
     %dx = 5*dx0 + 500*(eye(3) - J_*J)*J_*(dP + 50*(P-f(x))); % this is crap
         
     %dx = J_*1500*(two_point_arc(0.08, t/tfin)-f(x)) ;
-    
-    % s = SNS;
-    % dx = s.sns_vel(x, J, 50*(P-f(x)), [], s.limits_specular(5*ones(3,1)), [], 1e-3);
 end
 
 % DK
