@@ -4,7 +4,7 @@ using UnityEngine;
 
 public class HandGraspBootstrapper : MonoBehaviour
 {
-    [Header("Config")]
+   /* [Header("Config")]
     public string grabbableTag = "object";   // il tag dei tuoi oggetti afferrabili
     public float grabThreshold = 0.70f;
     public float releaseThreshold = 0.55f;
@@ -79,5 +79,5 @@ public class HandGraspBootstrapper : MonoBehaviour
         }
 
         Debug.Log("[HandGraspBootstrapper] Grasping pronto su " + gameObject.name);
-    }
+    }*/
 }

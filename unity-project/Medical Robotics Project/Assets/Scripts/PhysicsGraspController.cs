@@ -1,44 +1,44 @@
-using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
+using System.Collections;
+using System.Collections.Generic;
 
-//da aggiungere a OVRHand
+//da aggiungere a OVRHandPrefab
 
 [RequireComponent(typeof(OVRHand))]
 public class PhysicsGraspController : MonoBehaviour
 {
     [Header("Refs")]
-    public Transform palmAnchor;            // Empty sul palmo
-    public OVRHand ovrHand;                 // assegnato o trovato in Reset()
-    public HandColliderBuilder builder;     // opzionale: solo per riferimenti
-
-    [Header("Filters")] //per come è lo script ora usa entrambi: più semplice il tag
+    public Transform palmAnchor;            
+    public OVRHand ovrHand;                 
+    
+    [Header("Filters")] 
     public string grabbableTag = "";    // metti nome nella stringa o se lasci vuoto -> ignora
 
-    [Header("Thresholds (with hysteresis)")] //per evitare il flicker
+    [Header("Thresholds (with hysteresis)")] //anti-flicker
     [Range(0, 1)] public float grabThreshold = 0.70f;
     [Range(0, 1)] public float releaseThreshold = 0.55f;
-    public int debounceFrames = 2;          // anti-flicker
+    public int debounceFrames = 2;         
 
     [Header("Palm facing")]
     [Range(-1f, 1f)] public float palmFacingDotMin = 0.15f; // se >0 l'oggetto è davanti al palmo
 
-    public int minSustainFrames = 1; //min frame necessary to start grasping
+    public int minSustainFrames = 1; //min frame necessary to start grasping !!NOT USED NOW
 
     // Se il forward del palmAnchor punta 'fuori dal palmo', va bene così.
     // Altrimenti, cambia qui l'asse usato per il test.
     private Vector3 PalmForward() => palmAnchor ? palmAnchor.forward : transform.forward;
 
 
-    [Header("Joint Mode")]
-    public bool useFixedJoint = true;       // ✔ semplice e robusto
-    public bool softConfigurable = false;   // se false: Locked; se true: Limited + drive
+    //[Header("Joint Mode")]
+    //public bool useFixedJoint = true;       // JOINT USED
+    //public bool softConfigurable = false;   
 
-    [Header("Joint Tuning (Configurable)")]
+    /*[Header("Joint Tuning (Configurable)")]
     public float positionSpring = 2000f;
     public float positionDamper = 80f;
     public float rotationSpring = 3000f;
-    public float rotationDamper = 120f;
+    public float rotationDamper = 120f;*/
     public float breakForce = 1000f;
     public float breakTorque = 1000f;
 
@@ -50,14 +50,14 @@ public class PhysicsGraspController : MonoBehaviour
     [Range(0f, 1f)] public float velSmoothing = 0.2f;
     [Range(0f, 1f)] public float angSmoothing = 0.2f;
 
-    // stato velocità palmo
+    // Palm Velocity
     private Vector3 _lastPalmPos;
     private Quaternion _lastPalmRot;
     private Vector3 _palmVelocity;
     private Vector3 _palmAngularVelocity;
     
 
-    // contatti: RB -> set di dita (non colliders)
+    // Fingers in contact with RB
     private readonly Dictionary<Rigidbody, HashSet<string>> _fingerContacts = new();
 
     private bool _isGrabbing = false;
@@ -72,35 +72,57 @@ public class PhysicsGraspController : MonoBehaviour
 
     void Start()
     {
-        if (!palmAnchor) Debug.LogError("[PhysicsGraspController] palmAnchor non assegnato!");
         if (!ovrHand) ovrHand = GetComponent<OVRHand>();
+        var skel = GetComponent<OVRSkeleton>();
 
+        if (!palmAnchor)
+        {
+            // creating a new GameObject palmAnchor
+            palmAnchor = new GameObject("PalmAnchor").transform;
+            palmAnchor.SetParent(transform, false);
+        }
+
+        StartCoroutine(AlignPalmAnchor(skel));
+    }
+
+    IEnumerator AlignPalmAnchor(OVRSkeleton skel)
+    {
+        // wait for skeleton initialization
+        while (!skel || !skel.IsInitialized) yield return null;
+
+        // finding the Hand_Bone_Palm -> PalmAncor alligned with Palm Bone
+        //var palmBone = skel.Bones.FirstOrDefault(b => b.Id == OVRSkeleton.BoneId.Hand_WristRoot);
+
+
+       /* if (palmBone != null)
+        {
+
+            var palmCapsule = palmBone.Transform.GetComponentInChildren<CapsuleCollider>();
+            if (palmCapsule)
+            {
+                Debug.Log("--------------------PALMO PRESO--------------------" + palmCapsule);
+                palmAnchor.position = palmCapsule.transform.position;
+                palmAnchor.rotation = palmCapsule.transform.rotation;
+                palmAnchor.SetParent(palmBone.Transform, true); // lo fai seguire il bone
+                palmAnchor.localPosition += Vector3.up * 0.02f;
+            }
+        }
+        else
+        {
+            Debug.Log("--------------------ERRORE PALMO--------------------------");
+        }*/
+
+        // adding a rigidbody
         var palmRb = palmAnchor.GetComponent<Rigidbody>();
         if (!palmRb) palmRb = palmAnchor.gameObject.AddComponent<Rigidbody>();
         palmRb.isKinematic = true;
         palmRb.useGravity = false;
         palmRb.interpolation = RigidbodyInterpolation.Interpolate;
         palmRb.collisionDetectionMode = CollisionDetectionMode.ContinuousSpeculative;
-
-        // setup stato per smoothing velocità palmo
-        _lastPalmPos = palmAnchor.position;
-        _lastPalmRot = palmAnchor.rotation;
-        _palmVelocity = Vector3.zero;
-        _palmAngularVelocity = Vector3.zero;
-
-         /* collega automaticamente i reporter ai collider "HC_*"
-        foreach (var col in GetComponentsInChildren<Collider>())
-        {
-            if (!col.name.StartsWith("HC_")) continue;
-            var rep = col.gameObject.GetComponent<FingerContactController>();
-            if (!rep) rep = col.gameObject.AddComponent<FingerContactController>();
-            rep.controller = this;
-        }*/
-
-        // opzionale: evita che eventuali Joint residui rimangano attaccati al palmo
-        foreach (var j in palmAnchor.GetComponents<Joint>())
-            Destroy(j);
+        
     }
+
+
 
     void FixedUpdate()
     {
@@ -108,11 +130,11 @@ public class PhysicsGraspController : MonoBehaviour
 
         float dt = Time.fixedDeltaTime;
 
-        // vel lineare (con smoothing)
+        // Linear Velocity (with smoothing)
         var rawVel = (palmAnchor.position - _lastPalmPos) / dt;
         _palmVelocity = Vector3.Lerp(rawVel, _palmVelocity, velSmoothing);
 
-        // vel angolare (con smoothing)
+        // Angular velocity angolare (with smoothing)
         Quaternion dq = palmAnchor.rotation * Quaternion.Inverse(_lastPalmRot);
         dq.ToAngleAxis(out float angleDeg, out Vector3 axis);
         if (angleDeg > 180f) angleDeg -= 360f;
@@ -123,7 +145,7 @@ public class PhysicsGraspController : MonoBehaviour
         _lastPalmRot = palmAnchor.rotation;
     }
 
-    // --- Eventi dai colliders delle dita (FingerContactReporter) ---
+    // ---  Events from Finger Colliders (capsules) ---
 
     public void OnFingerTouchEnter(Collider finger, Collider other, string fingerId = null)
     {
@@ -133,9 +155,8 @@ public class PhysicsGraspController : MonoBehaviour
         if (!IsGrabbable(rb.gameObject)) return;
 
         if (!_fingerContacts.ContainsKey(rb)) _fingerContacts[rb] = new HashSet<string>();
-        Debug.Log("collider finger: " + finger);
-        Debug.Log(fingerId);
-        _fingerContacts[rb].Add(FingerIdFromColliderName(finger));
+
+        _fingerContacts[rb].Add(fingerId); 
         TryBeginGrab(rb);
     }
 
@@ -146,7 +167,7 @@ public class PhysicsGraspController : MonoBehaviour
         var rb = other.attachedRigidbody;
         if (_fingerContacts.ContainsKey(rb))
         {
-            _fingerContacts[rb].Remove(FingerIdFromColliderName(finger));
+            _fingerContacts[rb].Remove(fingerId);
             if (_fingerContacts[rb].Count == 0) _fingerContacts.Remove(rb);
         }
         TryEndGrab(rb);
@@ -160,32 +181,27 @@ public class PhysicsGraspController : MonoBehaviour
         if (_isGrabbing) return;
         if (!_fingerContacts.ContainsKey(rb)) return;
         if (!palmAnchor) return;
-
-        Debug.Log("Try Begin");
         
         HashSet<string> fingersInContact = _fingerContacts[rb];
-        foreach (string s in fingersInContact)
-        {
-            Debug.Log("Fingers in contact:" + s);
-        }
-        
-        bool thumbInContact = fingersInContact.Contains("Thumb");
-        bool hasOtherFinger = false;
-        foreach (var f in fingersInContact) { if (f != "Thumb") { hasOtherFinger = true; break; } }
 
-        // forza gesto (isteresi gestita da grab/release thresholds)
+        bool thumbInContact = fingersInContact.Contains("Thumb");
+        bool palmInContact = fingersInContact.Contains("Palm");
+        bool hasOtherFinger = false;
+        foreach (var f in fingersInContact) { if ((f != "Thumb") && (f != "Palm")) { hasOtherFinger = true; break; } }
+
+        // forza gesto (isteresi gestita da grab/release thresholds) DA RIVEDERE!!!!!
         float pinchMax = Mathf.Max(
             ovrHand.GetFingerPinchStrength(OVRHand.HandFinger.Index),
             ovrHand.GetFingerPinchStrength(OVRHand.HandFinger.Thumb)
         );
 
-        // PALM FACING: l'oggetto deve essere 'davanti' al palmo
+        // PALM FACING: the object has to be in front of the palm
         Vector3 toObj = (rb.worldCenterOfMass - palmAnchor.position).normalized;
         float facing = Vector3.Dot(PalmForward(), toObj);
         bool palmFacingOk = facing >= palmFacingDotMin;
 
-        // condizione complessiva
-        bool ok = thumbInContact && hasOtherFinger; //&& (pinchMax >= grabThreshold) && palmFacingOk;
+        // GRASPING CONDITION
+        bool ok = (((thumbInContact || palmInContact) && hasOtherFinger) || (pinchMax >= grabThreshold)) && palmFacingOk; 
 
         if (ok)
         {
@@ -212,18 +228,19 @@ public class PhysicsGraspController : MonoBehaviour
 
         HashSet<string> fingersInContact = _fingerContacts.ContainsKey(rb) ? _fingerContacts[rb] : new HashSet<string>();
         bool thumbInContact = fingersInContact.Contains("Thumb");
-        bool hasOtherFinger = fingersInContact.Any(f => f != "Thumb");
+        bool palmInContact = fingersInContact.Contains("Palm");
+        bool hasOtherFinger = fingersInContact.Any(f => f != "Thumb" && f != "Palm");
 
         float pinchMax = Mathf.Max(
             ovrHand.GetFingerPinchStrength(OVRHand.HandFinger.Index),
             ovrHand.GetFingerPinchStrength(OVRHand.HandFinger.Thumb)
         );
 
-        // condizione inversa: se manca il pollice o nessun altro dito, o pinch troppo basso → rilascio
-        bool release = !thumbInContact || !hasOtherFinger || (pinchMax <= releaseThreshold);
+        // RELEASE CONDITION
+        bool release = (pinchMax <= releaseThreshold) || (!(thumbInContact || palmInContact) || !hasOtherFinger); //|| (pinchMax <= releaseThreshold);
 
-        _framesStable = release ? _framesStable + 1 : 0;
-        if (release && _framesStable >= debounceFrames)
+        //_framesStable = release ? _framesStable + 1 : 0;
+        if (release)// && _framesStable >= debounceFrames)
         {
             Debug.Log("Try End");
             EndGrab();
@@ -236,32 +253,41 @@ public class PhysicsGraspController : MonoBehaviour
         if (!rb) return;
         Debug.Log("Grasping");
 
-        // Pulisci eventuali joint preesistenti sul palmo
+        // Cleaning preexisting joint on the palmAncor
         foreach (var j in palmAnchor.GetComponents<Joint>())
             Destroy(j);
 
         _currentBody = rb;
 
-        // Azzerare velocità all’attach (evita colpi elastici)
+        // Zeroing the velocity on the attach 
         rb.velocity = Vector3.zero;
         rb.angularVelocity = Vector3.zero;
+        rb.isKinematic = true;
 
-        // Solver più “duro” in presa (meno jitter)
+        Vector3 relativePosition = palmAnchor.InverseTransformPoint(rb.transform.position);
+        Quaternion relativeRotation = Quaternion.Inverse(palmAnchor.rotation) * rb.transform.rotation;
+
+        rb.transform.SetParent(palmAnchor);
+        rb.transform.localPosition = relativePosition;
+        rb.transform.localRotation = relativeRotation;
+
+
         rb.solverIterations = Mathf.Max(rb.solverIterations, 12);
         rb.solverVelocityIterations = Mathf.Max(rb.solverVelocityIterations, 12);
         rb.maxAngularVelocity = Mathf.Max(rb.maxAngularVelocity, 50f);
 
-        if (useFixedJoint)
+        /*if (useFixedJoint)
         {
             var fj = palmAnchor.gameObject.AddComponent<FixedJoint>();
             fj.connectedBody = rb;
             fj.breakForce = breakForce;
             fj.breakTorque = breakTorque;
+            _joint = fj; 
 
         }
-        else
-        {
-            var cj = palmAnchor.gameObject.AddComponent<ConfigurableJoint>();
+        else //if i want to configure a different joint for soft interactions
+        {*/
+            /*var cj = palmAnchor.gameObject.AddComponent<ConfigurableJoint>();
             cj.connectedBody = rb;
             cj.breakForce = breakForce;
             cj.breakTorque = breakTorque;
@@ -329,17 +355,19 @@ public class PhysicsGraspController : MonoBehaviour
             cj.connectedMassScale = 2.0f;
 
             // Evita oscillazioni iniziali aggressive
-            cj.enablePreprocessing = false;
-        }
+            cj.enablePreprocessing = false;*/
+        //}
 
         _isGrabbing = true;
-        Debug.Log("Grasping pronto ");
+        Debug.Log("!!!!!!!! GRASPING OBJECT !!!!!!!");
     }
 
     void EndGrab()
     {
         if (_joint) Destroy(_joint);
 
+
+        //Trasnfering the palm velocity to the object on release (Throw feature) 
         if (_currentBody && copyPalmVelocityOnRelease)
         {
             var v = _palmVelocity * throwMultiplier;
@@ -349,17 +377,20 @@ public class PhysicsGraspController : MonoBehaviour
 
             _currentBody.velocity = v;
             _currentBody.angularVelocity = w;
+            _currentBody.isKinematic = false;
+            _currentBody.transform.SetParent(null); 
+
         }
 
         _currentBody = null;
+        _fingerContacts.Clear();
         _isGrabbing = false;
         _framesStable = 0;
-        Debug.Log("Grasping tolto ");
+        Debug.Log("!!!!!!!! NOT GRASPING !!!!!!!");
     }
 
     void OnJointBreak(float bf)
     {
-        // sicurezza: se si rompe per forza eccessiva, ripulisci lo stato
         _joint = null;
         _currentBody = null;
         _isGrabbing = false;
@@ -382,22 +413,8 @@ public class PhysicsGraspController : MonoBehaviour
         return true;
     }
 
-    // Mappa nome collider -> dito (HC_Index1 -> "Index", HC_ThumbTip -> "Thumb", ecc.) HC_Hand_Ring1
-    private string FingerIdFromColliderName(Collider col)
-    {
-        //if (!string.IsNullOrEmpty(fallback)) return fallback;
-
-        string n = col.name.ToLower();
-        Debug.Log("funzione" + n);
-        if (n.Contains("thumb")) return "Thumb";
-        else if (n.Contains("index")) return "Index";
-        else if (n.Contains("middle")) return "Middle";
-        else if (n.Contains("ring")) return "Ring";
-        else if (n.Contains("pinky")) return "Pinky";
-        return "Unknown";
-    }
-    
-    // Restituisce il punto (in world space) del collider dell'oggetto RB più vicino a "worldPoint".
+/*    ONLY USED WITH DIFFERENT JOINT (not fixed)
+// Restituisce il punto (in world space) del collider dell'oggetto RB più vicino a "worldPoint".
 // Ignora i collider disabilitati e quelli trigger. Se non trova nulla, usa il centro di massa.
 private Vector3 ComputeClosestPointOnColliders(Rigidbody rb, Vector3 worldPoint)
 {
@@ -418,5 +435,5 @@ private Vector3 ComputeClosestPointOnColliders(Rigidbody rb, Vector3 worldPoint)
     }
 
     return best;
-}
+}*/
 }
