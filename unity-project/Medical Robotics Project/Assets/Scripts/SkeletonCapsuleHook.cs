@@ -101,6 +101,6 @@ public class SkeletonCapsuleHook : MonoBehaviour
         if (n.Contains("middle")) return "Middle";
         if (n.Contains("ring"))  return "Ring";
         if (n.Contains("pinky") || n.Contains("little")) return "Pinky";
-        return "Unknown";
+        return "Palm";
     }
 }

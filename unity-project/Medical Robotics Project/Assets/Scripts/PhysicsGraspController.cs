@@ -3,6 +3,7 @@ using UnityEngine;
 using System.Collections;
 using System.Collections.Generic;
 
+
 //da aggiungere a OVRHandPrefab
 
 [RequireComponent(typeof(OVRHand))]
@@ -10,7 +11,9 @@ public class PhysicsGraspController : MonoBehaviour
 {
     [Header("Refs")]
     public Transform palmAnchor;            
-    public OVRHand ovrHand;                 
+    public OVRHand ovrHand;  
+
+    public GameObject cube;                 
     
     [Header("Filters")] 
     public string grabbableTag = "";    // metti nome nella stringa o se lasci vuoto -> ignora
@@ -74,12 +77,20 @@ public class PhysicsGraspController : MonoBehaviour
     {
         if (!ovrHand) ovrHand = GetComponent<OVRHand>();
         var skel = GetComponent<OVRSkeleton>();
+        cube = GameObject.Find("Stick");
 
         if (!palmAnchor)
         {
             // creating a new GameObject palmAnchor
             palmAnchor = new GameObject("PalmAnchor").transform;
             palmAnchor.SetParent(transform, false);
+            palmAnchor.localPosition = new Vector3(0.0f, 0.0f, 0.08f);
+            // TODO: works for left hand. right hand has to be rotated the other way
+            palmAnchor.localRotation = Quaternion.Euler(90.0f, 0.0f, 0.0f);
+            //cube.transform.SetParent(palmAnchor, false);
+            //cube.transform.localPosition = new Vector3(0.0f, 0.0f, 0.0f);
+            //cube.transform.localRotation = Quaternion.identity;
+            
         }
 
         StartCoroutine(AlignPalmAnchor(skel));
@@ -143,6 +154,8 @@ public class PhysicsGraspController : MonoBehaviour
 
         _lastPalmPos = palmAnchor.position;
         _lastPalmRot = palmAnchor.rotation;
+
+        //Debug.Log("p" + PalmForward());
     }
 
     // ---  Events from Finger Colliders (capsules) ---
@@ -190,23 +203,24 @@ public class PhysicsGraspController : MonoBehaviour
         foreach (var f in fingersInContact) { if ((f != "Thumb") && (f != "Palm")) { hasOtherFinger = true; break; } }
 
         // forza gesto (isteresi gestita da grab/release thresholds) DA RIVEDERE!!!!!
-        float pinchMax = Mathf.Max(
+        /*float pinchMax = Mathf.Max(
             ovrHand.GetFingerPinchStrength(OVRHand.HandFinger.Index),
             ovrHand.GetFingerPinchStrength(OVRHand.HandFinger.Thumb)
-        );
+        );*/
 
         // PALM FACING: the object has to be in front of the palm
         Vector3 toObj = (rb.worldCenterOfMass - palmAnchor.position).normalized;
         float facing = Vector3.Dot(PalmForward(), toObj);
         bool palmFacingOk = facing >= palmFacingDotMin;
 
+
         // GRASPING CONDITION
-        bool ok = (((thumbInContact || palmInContact) && hasOtherFinger) || (pinchMax >= grabThreshold)) && palmFacingOk; 
+        bool ok = (((thumbInContact || palmInContact) && hasOtherFinger) && palmFacingOk); 
 
         if (ok)
         {
-            Debug.Log("----------OKAY-----------");
-            BeginGrab(rb);
+            Debug.Log("----------BOOP-----------");
+            //BeginGrab(rb);
         }
 
         // richiedi un numero minimo di frame consecutivi stabili in cui le condizioni persistono
@@ -231,13 +245,13 @@ public class PhysicsGraspController : MonoBehaviour
         bool palmInContact = fingersInContact.Contains("Palm");
         bool hasOtherFinger = fingersInContact.Any(f => f != "Thumb" && f != "Palm");
 
-        float pinchMax = Mathf.Max(
+        /*float pinchMax = Mathf.Max(
             ovrHand.GetFingerPinchStrength(OVRHand.HandFinger.Index),
             ovrHand.GetFingerPinchStrength(OVRHand.HandFinger.Thumb)
-        );
+        );*/
 
         // RELEASE CONDITION
-        bool release = (pinchMax <= releaseThreshold) || (!(thumbInContact || palmInContact) || !hasOtherFinger); //|| (pinchMax <= releaseThreshold);
+        bool release = (!(thumbInContact || palmInContact) || !hasOtherFinger); //|| (pinchMax <= releaseThreshold);
 
         //_framesStable = release ? _framesStable + 1 : 0;
         if (release)// && _framesStable >= debounceFrames)
@@ -262,6 +276,7 @@ public class PhysicsGraspController : MonoBehaviour
         // Zeroing the velocity on the attach 
         rb.velocity = Vector3.zero;
         rb.angularVelocity = Vector3.zero;
+        //accelerazione ??
         rb.isKinematic = true;
 
         Vector3 relativePosition = palmAnchor.InverseTransformPoint(rb.transform.position);
