@@ -96,11 +96,12 @@ public class SkeletonCapsuleHook : MonoBehaviour
     public static string FingerIdFromName(string n)
     {
         n = n.ToLower();
-        if (n.Contains("thumb")) return "Thumb";
-        if (n.Contains("index")) return "Index";
-        if (n.Contains("middle")) return "Middle";
-        if (n.Contains("ring"))  return "Ring";
-        if (n.Contains("pinky") || n.Contains("little")) return "Pinky";
-        return "Palm";
+        if (n.Contains("thumbdistal")) return "Thumb";
+        if (n.Contains("indexdistal")) return "Index";
+        if (n.Contains("middledistal")) return "Middle";
+        if (n.Contains("ringdistal"))  return "Ring";
+        if (n.Contains("pinkydistal") || n.Contains("littledistal")) return "Pinky";
+        if (n.Contains("wrist")) return "Palm";
+        return "unknown";
     }
 }

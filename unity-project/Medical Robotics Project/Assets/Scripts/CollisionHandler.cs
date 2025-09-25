@@ -29,7 +29,7 @@ public class CollisionHandler : MonoBehaviour
  
     void OnCollisionExit(Collision collision)
     {
-        controller?.OnFingerTouchExit(_self, collision.collider, fingerId);
+        //controller?.OnFingerTouchExit(_self, collision.collider, fingerId);
     }
 
     static string FingerIdFromName(string n)
