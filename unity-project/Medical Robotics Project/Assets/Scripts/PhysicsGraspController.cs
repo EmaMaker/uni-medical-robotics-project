@@ -13,43 +13,14 @@ public class PhysicsGraspController : MonoBehaviour
     public Transform palmAnchor;
     public OVRHand ovrHand;
 
-    public GameObject cube;
-
-    [Header("Filters")]
-    public string grabbableTag = "";    // metti nome nella stringa o se lasci vuoto -> ignora
-
-    [Header("Thresholds (with hysteresis)")] //anti-flicker
-    [Range(0, 1)] public float grabThreshold = 0.70f;
-    [Range(0, 1)] public float releaseThreshold = 0.55f;
-    public int debounceFrames = 2;
-
-    [Header("Palm facing")]
-    [Range(-1f, 1f)] public float palmFacingDotMin = 0.15f; // se >0 l'oggetto è davanti al palmo
-
-    public int minSustainFrames = 1; //min frame necessary to start grasping !!NOT USED NOW
-
-    // Se il forward del palmAnchor punta 'fuori dal palmo', va bene così.
-    // Altrimenti, cambia qui l'asse usato per il test.
     private Vector3 PalmForward() => palmAnchor ? palmAnchor.forward : transform.forward;
 
-
-    //[Header("Joint Mode")]
-    //public bool useFixedJoint = true;       // JOINT USED
-    //public bool softConfigurable = false;   
-
-    /*[Header("Joint Tuning (Configurable)")]
-    public float positionSpring = 2000f;
-    public float positionDamper = 80f;
-    public float rotationSpring = 3000f;
-    public float rotationDamper = 120f;*/
-    public float breakForce = 1000f;
-    public float breakTorque = 1000f;
 
     [Header("Release throw")]
     public bool copyPalmVelocityOnRelease = true;
     public float throwMultiplier = 1.0f;
-    public float maxThrowSpeed = 12f;        // clamp velocità lineare
-    public float maxThrowAngSpeed = 20f;     // clamp rad/s
+    public float maxThrowSpeed = 12f;        
+    public float maxThrowAngSpeed = 20f;     
     [Range(0f, 1f)] public float velSmoothing = 0.2f;
     [Range(0f, 1f)] public float angSmoothing = 0.2f;
 
@@ -63,19 +34,20 @@ public class PhysicsGraspController : MonoBehaviour
     // Fingers in contact with RB
     private readonly Dictionary<Rigidbody, HashSet<string>> _fingerContacts = new();
 
-    private readonly Dictionary<string, float> _fingerDistancePalm = new();
+    //distance from rigidbody for each finger
+    private readonly Dictionary<string, float> _fingerDistanceObj = new();
 
-    private readonly Dictionary<string, float> _fingerDistancePalmAtContact = new();
-
-    private bool _isGrabbing = false;
-    private float _framesStable = 0;
-    private bool checkTimer = false;
-    private Rigidbody _currentBody;
-    private Joint _joint; // FixedJoint o ConfigurableJoint
-
+    //distance from rigidbody for each finger at beginning of grasping
+    private readonly Dictionary<string, float> _fingerDistanceObjAtContact = new();
+    
     //All Finger colliders
     private Dictionary<string, Collider> _fingerColliders = new();
-   
+
+    private bool _isGrabbing = false;
+ 
+    private Rigidbody _currentBody;
+
+
 
     void Reset()
     {
@@ -95,7 +67,6 @@ public class PhysicsGraspController : MonoBehaviour
             palmAnchor.localPosition = new Vector3(0.0f, 0.0f, 0.08f);
             palmAnchor.localRotation = Quaternion.Euler(90.0f, 0.0f, 0.0f);
 
-
         }
 
         Transform capsulesRoot = skel.transform.Find("Capsules");
@@ -110,37 +81,17 @@ public class PhysicsGraspController : MonoBehaviour
         // Takes only the CapsuleCollider under the GameObject "Capsules"
         var caps = capsulesRoot.GetComponentsInChildren<CapsuleCollider>(true);
 
-
+        //Taking all the distal capsule colliders on the fingers
         foreach (var handler in caps)
         {
-            Debug.Log("FOREACH" + handler);
             string fingerId = FingerDistalFromName(handler.name);
             if (!_fingerColliders.ContainsKey(fingerId))
             {
                 _fingerColliders[fingerId] = handler.GetComponent<Collider>();
-                Debug.Log("LISTA COLLIDER AGGIUNTI:" + _fingerColliders[fingerId]);
             }
         }
-        //if(_fingerColliders != null) Debug.Log("COLLIDERS:" + _fingerColliders);
-
-        //StartCoroutine(AlignPalmAnchor(skel));
     }
 
-    // TODO: Check dimensions of rigidbody
-    IEnumerator AlignPalmAnchor(OVRSkeleton skel)
-    {
-        // wait for skeleton initialization
-        while (!skel || !skel.IsInitialized) yield return null;
-
-        // adding a rigidbody
-        var palmRb = palmAnchor.GetComponent<Rigidbody>();
-        if (!palmRb) palmRb = palmAnchor.gameObject.AddComponent<Rigidbody>();
-        palmRb.isKinematic = true;
-        palmRb.useGravity = false;
-        palmRb.interpolation = RigidbodyInterpolation.Interpolate;
-        palmRb.collisionDetectionMode = CollisionDetectionMode.ContinuousSpeculative;
-
-    }
 
     private Collider GetFingerCollider(string fingerId)
     {
@@ -148,18 +99,16 @@ public class PhysicsGraspController : MonoBehaviour
     }
 
 
-
     void FixedUpdate()
     {
         if (!palmAnchor) return;
-
-        float dt = Time.fixedDeltaTime;
-
-        // Linear Velocity (with smoothing)
+        
+        var dt = Time.deltaTime;
+        // Taking Linear and Angular Velocity and position and rotation from the palmAnchor
+        // used to transfer palm velocity to object on release
         var rawVel = (palmAnchor.position - _lastPalmPos) / dt;
         _palmVelocity = Vector3.Lerp(rawVel, _palmVelocity, velSmoothing);
 
-        // Angular velocity angolare (with smoothing)
         Quaternion dq = palmAnchor.rotation * Quaternion.Inverse(_lastPalmRot);
         dq.ToAngleAxis(out float angleDeg, out Vector3 axis);
         if (angleDeg > 180f) angleDeg -= 360f;
@@ -169,61 +118,44 @@ public class PhysicsGraspController : MonoBehaviour
         _lastPalmPos = palmAnchor.position;
         _lastPalmRot = palmAnchor.rotation;
 
-        //Debug.Log("p" + PalmForward());
-        //Vector4 v = palmAnchor.localToWorldMatrix * new Vector3(0.0f, 0.0f, 2.0f);
-        //Vector3 p2 = new Vector3(v.x, v.y, v.z);
-        //Debug.Log(palmAnchor.parent.parent.name);
-        //Debug.Log(palmAnchor.localRotation.eulerAngles);
-        //Debug.DrawLine(palmAnchor.position, palmAnchor.position + p2);
 
-        
         if (_currentBody == null) return;
         UpdateDst(_currentBody);
-        
+
+        //Release condition
         bool release = true;
-        //string s1 = "";
-        //foreach (string f in _fingerDistancePalmAtContact.Keys) s1 += $" {f} ";
-        //Debug.Log($"{_fingerDistancePalmAtContact.Count}, {s1}");
-        foreach (var p in _fingerDistancePalmAtContact)
+        foreach (var p in _fingerDistanceObjAtContact)
         {
-            if (_fingerDistancePalm[p.Key] < p.Value-0.005f)
+            //Check current finger distance from object w.r.t distance recorded at beginning of grasping
+            if (_fingerDistanceObj[p.Key] < p.Value - 0.005f)
             {
                 release = false;
                 break;
             }
         }
-        //Debug.Log($"Release? {release}");
         if (release)
         {
             EndGrab();
         }
-        // RELEASE CONDITION
-
-        //bool release = (!(thumbInContact || palmInContact)); //|| (pinchMax <= releaseThreshold);
-
-        //_framesStable = release ? _framesStable + 1 : 0;
-
-        //if ((checkTimer && Time.fixedTime >= _framesStable + 1f)) EndGrab();
     }
 
+    //Updates the distance from each finger to the rigid body at any time
     void UpdateDst(Rigidbody rb)
     {
         if (rb == null) return;
         string[] fingerNames = { "Thumb", "Index", "Middle", "Ring", "Pinky" };
 
-        //Getting each finger's distance from the palm
+        //Getting each finger's distance from the touched rigidbody
         foreach (string s in fingerNames)
         {
             var fingerCol = GetFingerCollider(s);
 
             if (fingerCol != null)
             {
-                //float dist = Vector3.Distance(fingerCol.bounds.center, palmAnchor.position);
-                //float dist = Vector3.Distance(rb.ClosestPointOnBounds(fingerCol.transform.position), fingerCol.transform.position);
                 Vector3 p1 = rb.ClosestPointOnBounds(fingerCol.transform.position);
                 Vector3 p2 = fingerCol.bounds.ClosestPoint(rb.worldCenterOfMass);
                 float dist = Vector3.Distance(p1, p2);
-                _fingerDistancePalm[s] = dist;
+                _fingerDistanceObj[s] = dist;
             }
         }
 
@@ -236,7 +168,6 @@ public class PhysicsGraspController : MonoBehaviour
         if (!other.attachedRigidbody) return;
 
         var rb = other.attachedRigidbody;
-        if (!IsGrabbable(rb.gameObject)) return;
 
         if (!_fingerContacts.ContainsKey(rb)) _fingerContacts[rb] = new HashSet<string>();
 
@@ -254,7 +185,6 @@ public class PhysicsGraspController : MonoBehaviour
             _fingerContacts[rb].Remove(fingerId);
             if (_fingerContacts[rb].Count == 0) _fingerContacts.Remove(rb);
         }
-        //TryEndGrab(rb);
     }
 
     // --- Logica di presa/rilascio ---
@@ -271,21 +201,14 @@ public class PhysicsGraspController : MonoBehaviour
         bool hasOtherFinger = false;
         foreach (var f in fingersInContact) { if ((f != "Thumb") && (f != "Palm")) { hasOtherFinger = true; break; } }
 
-        // forza gesto (isteresi gestita da grab/release thresholds) DA RIVEDERE!!!!!
-        /*float pinchMax = Mathf.Max(
-            ovrHand.GetFingerPinchStrength(OVRHand.HandFinger.Index),
-            ovrHand.GetFingerPinchStrength(OVRHand.HandFinger.Thumb)
-        );*/
 
         // PALM FACING: the object has to be in front of the palm
         Vector3 toObj = (rb.worldCenterOfMass - palmAnchor.position).normalized;
         float facing = Vector3.Dot(PalmForward(), toObj);
-        //bool palmFacingOk = facing >= palmFacingDotMin;
         bool palmFacingOk = facing > 0;
 
-
+        //Distance from the palm to the current object
         float dst = rb.ClosestPointOnBounds(palmAnchor.position).magnitude;
-        Debug.Log("DISTANCE TO OBJECT:" + dst);
 
 
         // GRASPING CONDITION
@@ -294,29 +217,21 @@ public class PhysicsGraspController : MonoBehaviour
         if (ok)
         {
             UpdateDst(rb);
-            Debug.Log("----------Condizioni Grab giuste-----------");
             foreach (string s in fingersInContact)
             {
                 if (s == "Palm" || s == "unknown") continue;
-                _fingerDistancePalmAtContact[s] = _fingerDistancePalm[s];
-                /*var fingerCol = GetFingerCollider(s);
-
-                if (fingerCol != null)
-                {
-                    float dist = Vector3.Distance(fingerCol.bounds.center, palmAnchor.position);
-                    _fingerDistancePalmAtContact[s] = dist;
-                }*/
+                _fingerDistanceObjAtContact[s] = _fingerDistanceObj[s];
             }
 
             // LEAVING IT HERE, check later
             /*string debugs = $"Grasping starting, conditions satisfied:\nThumb in contact: {thumbInContact}\nPalm In Contact: {palmInContact}\n";
-            foreach (var f in _fingerDistancePalmAtContact)
+            foreach (var f in _fingerDistanceObjAtContact)
             {
                 Debug.Log($"Distance {f.Key} at start attempt: {f.Value}");
                 debugs+=$"{f.Key} Distance: {f.Value}";
             }
 
-            foreach (var f in _fingerDistancePalmAtContact)
+            foreach (var f in _fingerDistanceObjAtContact)
             {
                 if (f.Value > 0.03f)
                 {
@@ -325,60 +240,9 @@ public class PhysicsGraspController : MonoBehaviour
                 }
             }
             Debug.Log(debugs);*/
-            
+
             BeginGrab(rb);
         }
-
-        // richiedi un numero minimo di frame consecutivi stabili in cui le condizioni persistono
-        /*int neededFrames = Mathf.Max(debounceFrames, minSustainFrames);
-        _framesStable = ok ? _framesStable + 1 : 0;
-
-        if (_framesStable >= neededFrames)
-        {
-            BeginGrab(rb);
-        }*/
-
-    }
-
-
-    void TryEndGrab(Rigidbody rb)
-    {
-
-        if (!_isGrabbing || rb != _currentBody) return;
-
-        HashSet<string> fingersInContact = _fingerContacts.ContainsKey(rb) ? _fingerContacts[rb] : new HashSet<string>();
-        bool thumbInContact = fingersInContact.Contains("Thumb");
-        bool palmInContact = fingersInContact.Contains("Palm");
-        bool hasOtherFinger = fingersInContact.Any(f => f != "Thumb" && f != "Palm");
-
-        /*bool distance = true;
-        string s = "";
-        foreach (string f in _fingerDistancePalmAtContact.Keys) s += $" {f} ";
-        //Debug.Log($"{_fingerDistancePalmAtContact.Count}, {s}");
-        foreach (var p in _fingerDistancePalmAtContact)
-        {
-            if (_fingerDistancePalm[p.Key] <= p.Value + 0.000005f)
-            {
-                distance = false;
-                break;
-            }
-        }
-        //Debug.Log($"Release? {release}");
-
-
-        /*float pinchMax = Mathf.Max(
-                ovrHand.GetFingerPinchStrength(OVRHand.HandFinger.Index),
-                ovrHand.GetFingerPinchStrength(OVRHand.HandFinger.Thumb)
-            );*/
-
-        // RELEASE CONDITION
-
-        bool release = (!(thumbInContact || palmInContact));
-        if (release)
-        {
-            _framesStable = Time.fixedTime;
-            checkTimer = true;
-        } 
 
     }
 
@@ -392,16 +256,11 @@ public class PhysicsGraspController : MonoBehaviour
         // Zeroing the velocity on the attach 
         rb.velocity = Vector3.zero;
         rb.angularVelocity = Vector3.zero;
-        //accelerazione ??
         rb.isKinematic = true;
         rb.useGravity = false;
 
-        //Vector3 relativePosition = palmAnchor.InverseTransformPoint(rb.transform.position);
-        //Quaternion relativeRotation = Quaternion.Inverse(palmAnchor.rotation) * rb.transform.rotation;
 
         rb.transform.SetParent(palmAnchor);
-        //rb.transform.localPosition = relativePosition;
-        //rb.transform.localRotation = relativeRotation;
 
         _isGrabbing = true;
         Debug.Log("!!!!!!!! GRASPING OBJECT !!!!!!!");
@@ -412,7 +271,7 @@ public class PhysicsGraspController : MonoBehaviour
 
         if (!_isGrabbing) return;
 
-        //Trasnfering the palm velocity to the object on release (Throw feature) 
+        //Transfering the palm velocity to the object on release (Throw feature) 
         if (_currentBody && copyPalmVelocityOnRelease)
         {
             var v = _palmVelocity * throwMultiplier;
@@ -431,67 +290,25 @@ public class PhysicsGraspController : MonoBehaviour
         _currentBody = null;
         _fingerContacts.Clear();
         _isGrabbing = false;
-        _framesStable = 0;
         Debug.Log("!!!!!!!! NOT GRASPING !!!!!!!");
     }
 
-    void OnJointBreak(float bf)
-    {
-        _joint = null;
-        _currentBody = null;
-        _isGrabbing = false;
-        _framesStable = 0;
-    }
 
     void OnDisable()
     {
-        if (_joint) Destroy(_joint);
         _currentBody = null;
         _isGrabbing = false;
-        _framesStable = 0;
     }
 
-    // --- Helpers ---
-
-    private bool IsGrabbable(GameObject go)
-    {
-        if (grabbableTag.Length > 0 && !go.CompareTag(grabbableTag)) return false;
-        return true;
-    }
-    
-     public static string FingerDistalFromName(string n)
+    public static string FingerDistalFromName(string n)
     {
         n = n.ToLower();
         if (n.Contains("thumbdistal")) return "Thumb";
         else if (n.Contains("indexdistal")) return "Index";
         else if (n.Contains("middledistal")) return "Middle";
-        else if (n.Contains("ringdistal"))  return "Ring";
+        else if (n.Contains("ringdistal")) return "Ring";
         else if (n.Contains("pinkydistal") || n.Contains("littledistal")) return "Pinky";
         else if (n.Contains("wrist")) return "Palm";
         return "unknown";
     }
-
-/*    ONLY USED WITH DIFFERENT JOINT (not fixed)
-        // Restituisce il punto (in world space) del collider dell'oggetto RB più vicino a "worldPoint".
-        // Ignora i collider disabilitati e quelli trigger. Se non trova nulla, usa il centro di massa.
-        private Vector3 ComputeClosestPointOnColliders(Rigidbody rb, Vector3 worldPoint)
-        {
-            var colliders = rb.GetComponentsInChildren<Collider>();
-            Vector3 best = rb.worldCenterOfMass;
-            float bestSqr = float.PositiveInfinity;
-
-            foreach (var c in colliders)
-            {
-                if (c == null || !c.enabled || c.isTrigger) continue;
-                Vector3 p = c.ClosestPoint(worldPoint);
-                float d2 = (p - worldPoint).sqrMagnitude;
-                if (d2 < bestSqr)
-                {
-                    bestSqr = d2;
-                    best = p;
-                }
-            }
-
-            return best;
-        }*/
 }

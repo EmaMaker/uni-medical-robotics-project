@@ -1,9 +1,9 @@
 using UnityEngine;
 
-//[RequireComponent(typeof(CapsuleCollider))]
 public class CollisionHandler : MonoBehaviour
 {
     public PhysicsGraspController controller; 
+
 
     [Tooltip("Finger ID, es. Thumb, Index, Middle, Ring, Pinky")]
     public string fingerId;
@@ -14,15 +14,11 @@ public class CollisionHandler : MonoBehaviour
     {
         _self = GetComponent<Collider>();
         if (!controller) controller = GetComponentInParent<PhysicsGraspController>();
-        if (string.IsNullOrEmpty(fingerId)) fingerId = FingerIdFromName(name);
+        if (string.IsNullOrEmpty(fingerId)) fingerId = FingerDistalFromName(name);
     }
 
     void OnCollisionEnter(Collision collision)
     {
-        // Per ricevere Collision:
-        // - isTrigger=false
-        // - almeno un Rigidbody NON-kinematic nel contatto (l’altro può essere kinematic)
-
         controller?.OnFingerTouchEnter(_self, collision.collider, fingerId);
     }
 
@@ -32,7 +28,7 @@ public class CollisionHandler : MonoBehaviour
         controller?.OnFingerTouchExit(_self, collision.collider, fingerId);
     }
 
-    static string FingerIdFromName(string n)
+   static string FingerDistalFromName(string n)
     {
         n = n.ToLower();
         if (n.Contains("thumbdistal")) return "Thumb";

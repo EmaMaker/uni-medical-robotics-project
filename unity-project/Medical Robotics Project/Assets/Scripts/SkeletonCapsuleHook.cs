@@ -1,4 +1,3 @@
-//!!!!!! NEEDS TO BE ATTACHED TO A PERSISTENT GAMEOBJECT OVRHANDPREFAB!!!!
 
 //This class allows me to have a reference of the OVRSkeleton that is created at runtime and this allows me to:
 // - attach my script CollisionHandler, that handles actions to be taken on collision, to the capsule collider created
@@ -10,9 +9,7 @@ using UnityEngine;
 [DefaultExecutionOrder(+50)]
 public class SkeletonCapsuleHook : MonoBehaviour
 {
-    public OVRSkeleton skeleton;                 
-
-    public bool useTrigger = true;      //in case i need to use the trigger
+    public OVRSkeleton skeleton;               
 
     bool hooked;
 
@@ -46,7 +43,6 @@ public class SkeletonCapsuleHook : MonoBehaviour
 
         var processed = new System.Collections.Generic.HashSet<GameObject>();
 
-
         foreach (var c in caps)
         {
             if (!c) continue;
@@ -66,26 +62,11 @@ public class SkeletonCapsuleHook : MonoBehaviour
                     hParent = rbGO.AddComponent<CollisionHandler>();
 
                 if (hParent && string.IsNullOrEmpty(hParent.fingerId))
-                    hParent.fingerId = FingerIdFromName(c.name);
+                    hParent.fingerId = FingerDistalFromName(c.name);
 
                 processed.Add(rbGO);
             }
 
-
-            //c.isTrigger = useTrigger;
-
-            /*if (!c.TryGetComponent<CollisionHandler>(out var h))
-                h = c.gameObject.AddComponent<CollisionHandler>();
-            //var parent = c.transform.parent ? c.transform.parent.gameObject : c.gameObject;
-
-            /*if (!parent.TryGetComponent<CollisionHandler>(out var hParent))
-                hParent = parent.AddComponent<CollisionHandler>();
-
-            var h = hParent;
-            if (h && string.IsNullOrEmpty(h.fingerId))
-                h.fingerId = FingerIdFromName(c.name);*/
-            /*if (string.IsNullOrEmpty(h.fingerId))
-                h.fingerId = FingerIdFromName(c.name);*/
         }
 
         hooked = true;
@@ -93,7 +74,7 @@ public class SkeletonCapsuleHook : MonoBehaviour
 
 
 
-    public static string FingerIdFromName(string n)
+    public static string FingerDistalFromName(string n)
     {
         n = n.ToLower();
         if (n.Contains("thumbdistal")) return "Thumb";
