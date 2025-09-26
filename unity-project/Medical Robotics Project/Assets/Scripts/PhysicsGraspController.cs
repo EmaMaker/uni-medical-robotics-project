@@ -68,13 +68,14 @@ public class PhysicsGraspController : MonoBehaviour
     private readonly Dictionary<string, float> _fingerDistancePalmAtContact = new();
 
     private bool _isGrabbing = false;
-    private int _framesStable = 0;
+    private float _framesStable = 0;
+    private bool checkTimer = false;
     private Rigidbody _currentBody;
     private Joint _joint; // FixedJoint o ConfigurableJoint
 
     //All Finger colliders
     private Dictionary<string, Collider> _fingerColliders = new();
-    float maxFingerPalmDistance = 0.05f;
+   
 
     void Reset()
     {
@@ -177,21 +178,19 @@ public class PhysicsGraspController : MonoBehaviour
         string[] fingerNames = { "Thumb", "Index", "Middle", "Ring", "Pinky" };
 
 
-        foreach (var finger in _fingerContacts)
+        //Getting each finger's distance from the palm
+        foreach (string s in fingerNames)
         {
-            foreach (string s in fingerNames)
-            {
-                var fingerCol = GetFingerCollider(s);
+            var fingerCol = GetFingerCollider(s);
 
-                if (fingerCol != null)
-                {
-                    float dist = Vector3.Distance(fingerCol.bounds.center, palmAnchor.position);
-                    _fingerDistancePalm[s] = dist;
-                }
+            if (fingerCol != null)
+            {
+                float dist = Vector3.Distance(fingerCol.bounds.center, palmAnchor.position);
+                _fingerDistancePalm[s] = dist;
             }
         }
-        
-        bool release = true;
+
+        /*bool release = true;
         string s1 = "";
         foreach (string f in _fingerDistancePalmAtContact.Keys) s1 += $" {f} ";
         Debug.Log($"{_fingerDistancePalmAtContact.Count}, {s1}");
@@ -204,13 +203,6 @@ public class PhysicsGraspController : MonoBehaviour
             }
         }
         Debug.Log($"Release? {release}");
-
-
-        /*float pinchMax = Mathf.Max(
-                ovrHand.GetFingerPinchStrength(OVRHand.HandFinger.Index),
-                ovrHand.GetFingerPinchStrength(OVRHand.HandFinger.Thumb)
-            );*/
-
         // RELEASE CONDITION
 
         //bool release = (!(thumbInContact || palmInContact)); //|| (pinchMax <= releaseThreshold);
@@ -220,7 +212,8 @@ public class PhysicsGraspController : MonoBehaviour
         {
             Debug.Log("--------Try End-------");
             EndGrab();
-        }
+        }*/
+        if (checkTimer && Time.fixedTime >= _framesStable + 0.1f) EndGrab();
     }
 
     // ---  Events from Finger Colliders (capsules) ---
@@ -293,10 +286,11 @@ public class PhysicsGraspController : MonoBehaviour
                 if (fingerCol != null)
                 {
                     float dist = Vector3.Distance(fingerCol.bounds.center, palmAnchor.position);
-                   _fingerDistancePalmAtContact[s] = dist;
+                    _fingerDistancePalmAtContact[s] = dist;
                 }
             }
             BeginGrab(rb);
+            checkTimer = false;
         }
 
         // richiedi un numero minimo di frame consecutivi stabili in cui le condizioni persistono
@@ -314,14 +308,14 @@ public class PhysicsGraspController : MonoBehaviour
     void TryEndGrab(Rigidbody rb)
     {
 
-        //if (!_isGrabbing || rb != _currentBody) return;
+        if (!_isGrabbing || rb != _currentBody) return;
 
         HashSet<string> fingersInContact = _fingerContacts.ContainsKey(rb) ? _fingerContacts[rb] : new HashSet<string>();
         bool thumbInContact = fingersInContact.Contains("Thumb");
         bool palmInContact = fingersInContact.Contains("Palm");
         bool hasOtherFinger = fingersInContact.Any(f => f != "Thumb" && f != "Palm");
 
-        bool release = true;
+        bool distance = true;
         string s = "";
         foreach (string f in _fingerDistancePalmAtContact.Keys) s += $" {f} ";
         Debug.Log($"{_fingerDistancePalmAtContact.Count}, {s}");
@@ -329,11 +323,11 @@ public class PhysicsGraspController : MonoBehaviour
         {
             if (_fingerDistancePalm[p.Key] <= p.Value + 0.000005f)
             {
-                release = false;
+                distance = false;
                 break;
             }
         }
-        Debug.Log($"Release? {release}");
+        //Debug.Log($"Release? {release}");
 
 
         /*float pinchMax = Mathf.Max(
@@ -343,14 +337,13 @@ public class PhysicsGraspController : MonoBehaviour
 
         // RELEASE CONDITION
 
-        //bool release = (!(thumbInContact || palmInContact)); //|| (pinchMax <= releaseThreshold);
-
-        //_framesStable = release ? _framesStable + 1 : 0;
-        if (release)// && _framesStable >= debounceFrames)
+        bool release = (!(thumbInContact || palmInContact) || distance);
+        if (release)
         {
-            Debug.Log("--------Try End-------");
-            EndGrab();
-        }
+            _framesStable = Time.fixedTime;
+            checkTimer = true;
+        } 
+
     }
 
 
