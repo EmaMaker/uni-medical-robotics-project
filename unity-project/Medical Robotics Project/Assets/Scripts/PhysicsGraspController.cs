@@ -12,7 +12,10 @@ public class PhysicsGraspController : MonoBehaviour
     [Header("Refs")]
     public Transform palmAnchor;
     public OVRHand ovrHand;
-
+    public GameObject handCopy = null;
+    public OVRSkeleton ovrSkeleton;
+    public OVRPlugin.HandState handStateAtGrasp;
+    IList<OVRBone> Bones;
     private Vector3 PalmForward() => palmAnchor ? palmAnchor.forward : transform.forward;
 
 
@@ -57,7 +60,7 @@ public class PhysicsGraspController : MonoBehaviour
     void Start()
     {
         if (!ovrHand) ovrHand = GetComponent<OVRHand>();
-        var skel = GetComponent<OVRSkeleton>();
+        ovrSkeleton = GetComponent<OVRSkeleton>();
 
         if (!palmAnchor)
         {
@@ -66,14 +69,13 @@ public class PhysicsGraspController : MonoBehaviour
             palmAnchor.SetParent(transform, false);
             palmAnchor.localPosition = new Vector3(0.0f, 0.0f, 0.08f);
             palmAnchor.localRotation = Quaternion.Euler(90.0f, 0.0f, 0.0f);
-
         }
 
-        Transform capsulesRoot = skel.transform.Find("Capsules");
+        Transform capsulesRoot = ovrSkeleton.transform.Find("Capsules");
 
         if (!capsulesRoot)
         {
-            foreach (var t in skel.GetComponentsInChildren<Transform>(true))
+            foreach (var t in ovrSkeleton.GetComponentsInChildren<Transform>(true))
                 if (t.name == "Capsules") { capsulesRoot = t; break; }
         }
         if (!capsulesRoot) return;
@@ -102,7 +104,7 @@ public class PhysicsGraspController : MonoBehaviour
     void FixedUpdate()
     {
         if (!palmAnchor) return;
-        
+
         var dt = Time.deltaTime;
         // Taking Linear and Angular Velocity and position and rotation from the palmAnchor
         // used to transfer palm velocity to object on release
@@ -118,8 +120,9 @@ public class PhysicsGraspController : MonoBehaviour
         _lastPalmPos = palmAnchor.position;
         _lastPalmRot = palmAnchor.rotation;
 
-
+        
         if (_currentBody == null) return;
+
         UpdateDst(_currentBody);
 
         //Release condition
@@ -189,7 +192,6 @@ public class PhysicsGraspController : MonoBehaviour
 
     // --- Logica di presa/rilascio ---
 
-
     void TryBeginGrab(Rigidbody rb)
     {
         if (_isGrabbing || !_fingerContacts.ContainsKey(rb) || !palmAnchor) return;
@@ -212,7 +214,7 @@ public class PhysicsGraspController : MonoBehaviour
 
 
         // GRASPING CONDITION
-        bool ok = (((thumbInContact || (palmInContact && (dst <= 0.9f))) && hasOtherFinger) && palmFacingOk);
+        bool ok = (((thumbInContact || (palmInContact && (dst <= 0.6f))) && hasOtherFinger) && palmFacingOk);
 
         if (ok)
         {
@@ -229,19 +231,50 @@ public class PhysicsGraspController : MonoBehaviour
             {
                 Debug.Log($"Distance {f.Key} at start attempt: {f.Value}");
                 debugs+=$"{f.Key} Distance: {f.Value}";
-            }
+            }*/
 
             foreach (var f in _fingerDistanceObjAtContact)
             {
                 if (f.Value > 0.03f)
                 {
-                    Debug.Log($"{f.Key} too high: {f.Value}");
+                    //Debug.Log($"{f.Key} too high: {f.Value}");
                     return;
                 }
             }
-            Debug.Log(debugs);*/
+            //Debug.Log(debugs);
+
+            //OVRSkeleton.SkeletonPoseData pd = ovrHand._handState;
+            //Debug.Log(pd.BoneTranslations);
+            //foreach(var b in ovrSkeleton.Bones)
 
             BeginGrab(rb);
+
+            // Create a copy of the hand, attached to the hand itself as children (to automatically update the pose)
+            // and no OVRSkeleton to keep a ghost hand in the pose used to grasp the object
+            if (handCopy == null)
+            {
+                /*List<Transform> list = new List<Transform>();
+                foreach (Transform child in ovrHand.gameObject.transform)
+                {
+                    child.SetParent(null, false);
+                    list.Add(child);
+                }
+                handCopy = Instantiate(ovrHand.gameObject, transform);
+                Destroy(handCopy.transform.Find("PalmAnchor"));
+                handCopy.GetComponent<OVRSkeleton>().enabled = false;
+                handCopy.GetComponent<OVRSkeletonRenderer>().enabled = false;
+                handCopy.GetComponent<PhysicsGraspController>().enabled = false;
+                handCopy.GetComponent<SkeletonCapsuleHook>().enabled = false;
+                handCopy.GetComponent<OVRMeshRenderer>().enabled = true;
+                handCopy.GetComponent<SkinnedMeshRenderer>().enabled = true;
+                foreach (Transform child in list) child.SetParent(ovrHand.gameObject.transform, false);
+                
+
+                // Disable rendering of the
+                ovrHand.gameObject.GetComponent<OVRMeshRenderer>().enabled = false;
+                ovrHand.gameObject.GetComponent<OVRSkeletonRenderer>().enabled = false;
+                ovrHand.gameObject.GetComponent<SkinnedMeshRenderer>().enabled = false;*/
+            }
         }
 
     }
@@ -259,10 +292,12 @@ public class PhysicsGraspController : MonoBehaviour
         rb.isKinematic = true;
         rb.useGravity = false;
 
-
+        // TODO: disable colliders on the grasped object
+        //rb.gameObject.GetComponent<Collider> ().enabled = false;
         rb.transform.SetParent(palmAnchor);
 
         _isGrabbing = true;
+        ovrHand.medicalIsGrabbing = true;
         Debug.Log("!!!!!!!! GRASPING OBJECT !!!!!!!");
     }
 
@@ -284,12 +319,14 @@ public class PhysicsGraspController : MonoBehaviour
             _currentBody.velocity = v;
             _currentBody.angularVelocity = w;
             _currentBody.useGravity = true;
+            //_currentBody.gameObject.GetComponent<Collider> ().enabled = true;
 
         }
-
         _currentBody = null;
         _fingerContacts.Clear();
         _isGrabbing = false;
+        ovrHand.medicalIsGrabbing = false;
+
         Debug.Log("!!!!!!!! NOT GRASPING !!!!!!!");
     }
 
