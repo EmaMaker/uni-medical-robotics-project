@@ -12,8 +12,10 @@ public class PhysicsGraspController : MonoBehaviour
     [Header("Refs")]
     public Transform palmAnchor;
     public OVRHand ovrHand;
-    public GameObject handCopy = null;
+    public OVRHand handCopy = null;
     public OVRSkeleton ovrSkeleton;
+    public OVRMesh savedMesh = null;
+    public OVRSkeleton savedSkeleton = null;
     public OVRPlugin.HandState handStateAtGrasp;
     IList<OVRBone> Bones;
     private Vector3 PalmForward() => palmAnchor ? palmAnchor.forward : transform.forward;
@@ -61,6 +63,9 @@ public class PhysicsGraspController : MonoBehaviour
     {
         if (!ovrHand) ovrHand = GetComponent<OVRHand>();
         ovrSkeleton = GetComponent<OVRSkeleton>();
+
+        // Very ugly workaround: always disable ovrskeletonrenderer to avoid ghosts when creating a clone hand
+        GetComponent<OVRSkeletonRenderer>().enabled = false;
 
         if (!palmAnchor)
         {
@@ -123,6 +128,7 @@ public class PhysicsGraspController : MonoBehaviour
         
         if (_currentBody == null) return;
 
+        // TODO: only update this if data is high confidence (OVRHand)
         UpdateDst(_currentBody);
 
         //Release condition
@@ -130,7 +136,8 @@ public class PhysicsGraspController : MonoBehaviour
         foreach (var p in _fingerDistanceObjAtContact)
         {
             //Check current finger distance from object w.r.t distance recorded at beginning of grasping
-            if (_fingerDistanceObj[p.Key] < p.Value - 0.005f)
+            //if (_fingerDistanceObj[p.Key] < p.Value - 0.005f)
+            if (_fingerDistanceObj[p.Key] < p.Value + 0.001f)
             {
                 release = false;
                 break;
@@ -242,41 +249,57 @@ public class PhysicsGraspController : MonoBehaviour
                 }
             }
             //Debug.Log(debugs);
-
-            //OVRSkeleton.SkeletonPoseData pd = ovrHand._handState;
-            //Debug.Log(pd.BoneTranslations);
-            //foreach(var b in ovrSkeleton.Bones)
-
-            BeginGrab(rb);
-
-            // Create a copy of the hand, attached to the hand itself as children (to automatically update the pose)
+            
+            // Create a copy of the hand, attached to the hand itself as a child (to automatically update the pose)
             // and no OVRSkeleton to keep a ghost hand in the pose used to grasp the object
             if (handCopy == null)
             {
-                /*List<Transform> list = new List<Transform>();
-                foreach (Transform child in ovrHand.gameObject.transform)
+                // Disable rendering components on original hand
+                enableRenderComponents(ovrHand, false);
+                // Cannot destroy previous ovrskeletonrendererdata, as it leads to nullreferenceseven when ovrskeletonrenderer is disable
+                // Ugly solution: never use ovrskeletonrenderer
+                //Transform sr = ovrHand.transform.Find("SkeletonRenderer");
+                //if (sr != null) Destroy(sr.gameObject);
+                // Move all children of original hand to root of hierarcy to avoid creating duplicates in copy
+                /*foreach (Transform child in ovrHand.gameObject.transform)
                 {
                     child.SetParent(null, false);
                     list.Add(child);
-                }
-                handCopy = Instantiate(ovrHand.gameObject, transform);
-                Destroy(handCopy.transform.Find("PalmAnchor"));
-                handCopy.GetComponent<OVRSkeleton>().enabled = false;
-                handCopy.GetComponent<OVRSkeletonRenderer>().enabled = false;
+                }*/
+                // Create copy hand
+                handCopy = Instantiate(ovrHand.gameObject, transform).GetComponent<OVRHand>();
+                // Destroy PalmAnchor child of copy, so no duplicate objects are created
+                Transform pa = handCopy.transform.Find("palmAnchor");
+                if (pa != null) Destroy(pa.gameObject);
+                // Disable rendering on copy (enable it when data is obtained)
+                enableRenderComponents(handCopy, false);
                 handCopy.GetComponent<PhysicsGraspController>().enabled = false;
                 handCopy.GetComponent<SkeletonCapsuleHook>().enabled = false;
-                handCopy.GetComponent<OVRMeshRenderer>().enabled = true;
-                handCopy.GetComponent<SkinnedMeshRenderer>().enabled = true;
-                foreach (Transform child in list) child.SetParent(ovrHand.gameObject.transform, false);
-                
-
-                // Disable rendering of the
-                ovrHand.gameObject.GetComponent<OVRMeshRenderer>().enabled = false;
-                ovrHand.gameObject.GetComponent<OVRSkeletonRenderer>().enabled = false;
-                ovrHand.gameObject.GetComponent<SkinnedMeshRenderer>().enabled = false;*/
+                // Disable capsule physics (property made public) and destroy existing capsules
+                handCopy.GetComponent<OVRSkeleton>()._enablePhysicsCapsules = false;
+                Transform ca = handCopy.transform.Find("Capsules");
+                if (ca != null) Destroy(ca.gameObject);
+                handCopy.medicalFirstUpdate = true;
             }
+            BeginGrab(rb);
         }
 
+    }
+
+    List<Transform> list = new List<Transform>();
+    private void Update()
+    {
+        // Let the copy do a first update the find the position of the hand, then disable skeleton
+        if (handCopy != null && !(handCopy.medicalFirstUpdate))
+        {
+            enableRenderComponents(handCopy, true);
+            handCopy.GetComponent<OVRSkeleton>().enabled = false;
+
+            // After a first update is done, finally reattach all children to the original hand
+            foreach (Transform child in list) child.SetParent(ovrHand.transform, false);
+            // Then disable rendering for the original hand
+            enableRenderComponents(ovrHand, false);
+        }
     }
 
 
@@ -327,9 +350,28 @@ public class PhysicsGraspController : MonoBehaviour
         _isGrabbing = false;
         ovrHand.medicalIsGrabbing = false;
 
+        // Destroy copy hand and re-enable rendering
+        enableRenderComponents(ovrHand, true);
+        enableRenderComponents(handCopy, false);
+        Destroy(handCopy.gameObject);
+        handCopy = null;
+
+
+        //handCopy = null;
+
         Debug.Log("!!!!!!!! NOT GRASPING !!!!!!!");
     }
 
+    public void enableRenderComponents(OVRHand _ovrHand, bool _enable)
+    {
+        _ovrHand.GetComponent<OVRMeshRenderer>().enabled = _enable;
+        //_ovrHand.GetComponent<OVRSkeletonRenderer>().enabled = _enable;
+        _ovrHand.GetComponent<SkinnedMeshRenderer>().enabled = _enable;
+        _ovrHand.GetComponent<OVRMesh>().enabled = _enable;
+        /*if (!_enable)
+        {
+        } */
+    }
 
     void OnDisable()
     {
