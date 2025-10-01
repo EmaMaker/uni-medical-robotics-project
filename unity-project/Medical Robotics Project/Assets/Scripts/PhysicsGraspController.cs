@@ -125,8 +125,7 @@ public class PhysicsGraspController : MonoBehaviour
         _lastPalmPos = palmAnchor.position;
         _lastPalmRot = palmAnchor.rotation;
 
-        
-        if (_currentBody == null) return;
+        if (_currentBody == null || !ovrSkeleton.IsDataHighConfidence) return;
 
         // TODO: only update this if data is high confidence (OVRHand)
         UpdateDst(_currentBody);
@@ -137,7 +136,7 @@ public class PhysicsGraspController : MonoBehaviour
         {
             //Check current finger distance from object w.r.t distance recorded at beginning of grasping
             //if (_fingerDistanceObj[p.Key] < p.Value - 0.005f)
-            if (_fingerDistanceObj[p.Key] < p.Value + 0.001f)
+            if (_fingerDistanceObj[p.Key] < p.Value + 0.0005f)
             {
                 release = false;
                 break;
@@ -201,7 +200,7 @@ public class PhysicsGraspController : MonoBehaviour
 
     void TryBeginGrab(Rigidbody rb)
     {
-        if (_isGrabbing || !_fingerContacts.ContainsKey(rb) || !palmAnchor) return;
+        if (_isGrabbing || !_fingerContacts.ContainsKey(rb) || !palmAnchor || !ovrSkeleton.IsDataHighConfidence) return;
 
         HashSet<string> fingersInContact = _fingerContacts[rb];
 
@@ -221,7 +220,7 @@ public class PhysicsGraspController : MonoBehaviour
 
 
         // GRASPING CONDITION
-        bool ok = (((thumbInContact || (palmInContact && (dst <= 0.6f))) && hasOtherFinger) && palmFacingOk);
+        bool ok = (((thumbInContact || (palmInContact && (dst <= 0.04f))) && hasOtherFinger) && palmFacingOk);
 
         if (ok)
         {
