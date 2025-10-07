@@ -73,6 +73,11 @@ public class PhysicsGraspController : MonoBehaviour
         {
             // creating a new GameObject palmAnchor
             palmAnchor = new GameObject("PalmAnchor").transform;
+            //BoxCollider bx = palmAnchor.gameObject.AddComponent<BoxCollider>();
+            //bx.size = new Vector3(0.05f, 0.05f, 0.05f);
+            //CollisionHandler ch = palmAnchor.gameObject.AddComponent<CollisionHandler>();
+            //ch.fingerId = "Palm";
+
             palmAnchor.SetParent(transform, false);
             palmAnchor.localPosition = new Vector3(0.0f, 0.0f, 0.08f);
             palmAnchor.localRotation = Quaternion.Euler(90.0f, 0.0f, 0.0f);
@@ -146,7 +151,7 @@ public class PhysicsGraspController : MonoBehaviour
         {
             //Check current finger distance from object w.r.t distance recorded at beginning of grasping
             //if (_fingerDistanceObj[p.Key] < p.Value - 0.005f)
-            if (_fingerDistanceObj[p.Key] < p.Value + 0.0005f)
+            if (_fingerDistanceObj[p.Key] < p.Value + 0.00075f)
             {
                 release = false;
                 break;
@@ -155,6 +160,7 @@ public class PhysicsGraspController : MonoBehaviour
         if (release)
         {
             EndGrab();
+            _fingerDistanceObjAtContact.Clear();
         }
     }
 
@@ -207,7 +213,7 @@ public class PhysicsGraspController : MonoBehaviour
     }
 
     // --- Logica di presa/rilascio ---
-
+    Rigidbody _tmpRb = null;
     void TryBeginGrab(Rigidbody rb)
     {
         if (_isGrabbing || !_fingerContacts.ContainsKey(rb) || _fingerRelease.ContainsKey(rb) || !palmAnchor || !ovrSkeleton.IsDataHighConfidence) return;
@@ -218,7 +224,6 @@ public class PhysicsGraspController : MonoBehaviour
         bool palmInContact = fingersInContact.Contains("Palm");
         bool hasOtherFinger = false;
         foreach (var f in fingersInContact) { if(! (f.Equals("Thumb", StringComparison.OrdinalIgnoreCase) || f.Equals("Palm", StringComparison.OrdinalIgnoreCase) || f.Equals("unknown", StringComparison.OrdinalIgnoreCase))) { hasOtherFinger = true; break; } }
-
 
         // PALM FACING: the object has to be in front of the palm
         Vector3 toObj = (rb.worldCenterOfMass - palmAnchor.position).normalized;
@@ -237,12 +242,6 @@ public class PhysicsGraspController : MonoBehaviour
 
         if (ok)
         {
-            UpdateDst(rb);
-            foreach (string f in fingersInContact)
-            {
-                if (f.Equals("Palm", StringComparison.OrdinalIgnoreCase) || f.Equals("unknown", StringComparison.OrdinalIgnoreCase)) continue;
-                _fingerDistanceObjAtContact[f] = _fingerDistanceObj[f];
-            }
 
             // LEAVING IT HERE, check later
             /*string debugs = $"Grasping starting, conditions satisfied:\nThumb in contact: {thumbInContact}\nPalm In Contact: {palmInContact}\n";
@@ -261,7 +260,7 @@ public class PhysicsGraspController : MonoBehaviour
                 }
             }*/
             //Debug.Log(debugs);
-            
+            _tmpRb = rb;
             // Create a copy of the hand, attached to the hand itself as a child (to automatically update the pose)
             // and no OVRSkeleton to keep a ghost hand in the pose used to grasp the object
             if (handCopy == null)
@@ -293,12 +292,10 @@ public class PhysicsGraspController : MonoBehaviour
                 if (ca != null) Destroy(ca.gameObject);
                 handCopy.medicalFirstUpdate = true;
             }
-            BeginGrab(rb);
         }
 
     }
 
-    List<Transform> list = new List<Transform>();
     private void Update()
     {
         // Let the copy do a first update the find the position of the hand, then disable skeleton
@@ -307,8 +304,16 @@ public class PhysicsGraspController : MonoBehaviour
             enableRenderComponents(handCopy, true);
             handCopy.GetComponent<OVRSkeleton>().enabled = false;
 
-            // After a first update is done, finally reattach all children to the original hand
-            foreach (Transform child in list) child.SetParent(ovrHand.transform, false);
+            HashSet<string> fingersInContact = _fingerContacts[_tmpRb];
+            UpdateDst(_tmpRb);
+            foreach (string f in fingersInContact)
+            {
+                if (f.Equals("Palm", StringComparison.OrdinalIgnoreCase) || f.Equals("unknown", StringComparison.OrdinalIgnoreCase)) continue;
+                _fingerDistanceObjAtContact[f] = _fingerDistanceObj[f];
+            }
+            BeginGrab(_tmpRb);
+            _tmpRb = null;
+
             // Then disable rendering for the original hand
             enableRenderComponents(ovrHand, false);
         }
