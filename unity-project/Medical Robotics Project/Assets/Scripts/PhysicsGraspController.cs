@@ -38,7 +38,8 @@ public class PhysicsGraspController : MonoBehaviour
 
     // Fingers in contact with RB
     private readonly Dictionary<Rigidbody, HashSet<string>> _fingerContacts = new();
-
+    private readonly Dictionary<Rigidbody, float> _fingerRelease = new();
+    private readonly float RELEASE_COOLDOWN = 0.25f;
     //distance from rigidbody for each finger
     private readonly Dictionary<string, float> _fingerDistanceObj = new();
 
@@ -125,6 +126,14 @@ public class PhysicsGraspController : MonoBehaviour
         _lastPalmPos = palmAnchor.position;
         _lastPalmRot = palmAnchor.rotation;
 
+        List<Rigidbody> toRemove = new List<Rigidbody>();
+        foreach (var finger in _fingerRelease)
+        {
+            if (Time.fixedTime - finger.Value > RELEASE_COOLDOWN)
+            toRemove.Add(finger.Key);
+        }
+        foreach(var finger in toRemove) _fingerRelease.Remove(finger);
+
         if (_currentBody == null || !ovrSkeleton.IsDataHighConfidence) return;
 
         // TODO: only update this if data is high confidence (OVRHand)
@@ -200,7 +209,7 @@ public class PhysicsGraspController : MonoBehaviour
 
     void TryBeginGrab(Rigidbody rb)
     {
-        if (_isGrabbing || !_fingerContacts.ContainsKey(rb) || !palmAnchor || !ovrSkeleton.IsDataHighConfidence) return;
+        if (_isGrabbing || !_fingerContacts.ContainsKey(rb) || _fingerRelease.ContainsKey(rb) || !palmAnchor || !ovrSkeleton.IsDataHighConfidence) return;
 
         HashSet<string> fingersInContact = _fingerContacts[rb];
 
@@ -345,6 +354,8 @@ public class PhysicsGraspController : MonoBehaviour
             _currentBody.angularVelocity = w;
             _currentBody.useGravity = true;
             //_currentBody.gameObject.GetComponent<Collider> ().enabled = true;
+
+            _fingerRelease[_currentBody] = Time.fixedTime;
 
         }
         _currentBody = null;
