@@ -18,7 +18,7 @@ public class PhysicsGraspController : MonoBehaviour
     public OVRSkeleton savedSkeleton = null;
     public OVRPlugin.HandState handStateAtGrasp;
     IList<OVRBone> Bones;
-    private Vector3 PalmForward() => palmAnchor ? palmAnchor.forward : transform.forward;
+    private Vector3 PalmForward() => palmAnchor ? palmAnchor.transform.TransformDirection(Vector3.forward) : transform.TransformDirection(Vector3.forward);
 
 
     [Header("Release throw")]
@@ -213,14 +213,17 @@ public class PhysicsGraspController : MonoBehaviour
         // PALM FACING: the object has to be in front of the palm
         Vector3 toObj = (rb.worldCenterOfMass - palmAnchor.position).normalized;
         float facing = Vector3.Dot(PalmForward(), toObj);
-        bool palmFacingOk = facing > 0;
+        bool palmFacingOk = facing > 0.5;
 
         //Distance from the palm to the current object
         float dst = rb.ClosestPointOnBounds(palmAnchor.position).magnitude;
 
 
         // GRASPING CONDITION
-        bool ok = (((thumbInContact || (palmInContact && (dst <= 0.04f))) && hasOtherFinger) && palmFacingOk);
+        Debug.Log("---------" + facing);
+        Debug.DrawLine(palmAnchor.position, toObj);
+        Debug.DrawLine(palmAnchor.position, palmAnchor.position+PalmForward());
+        bool ok = (((thumbInContact || (palmInContact ))) && hasOtherFinger && dst <= 1.1f && palmFacingOk);
 
         if (ok)
         {
@@ -239,14 +242,14 @@ public class PhysicsGraspController : MonoBehaviour
                 debugs+=$"{f.Key} Distance: {f.Value}";
             }*/
 
-            foreach (var f in _fingerDistanceObjAtContact)
+            /*foreach (var f in _fingerDistanceObjAtContact)
             {
                 if (f.Value > 0.03f)
                 {
                     //Debug.Log($"{f.Key} too high: {f.Value}");
                     return;
                 }
-            }
+            }*/
             //Debug.Log(debugs);
             
             // Create a copy of the hand, attached to the hand itself as a child (to automatically update the pose)
