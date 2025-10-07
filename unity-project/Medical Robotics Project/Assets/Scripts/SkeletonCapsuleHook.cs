@@ -9,18 +9,18 @@ using UnityEngine;
 [DefaultExecutionOrder(+50)]
 public class SkeletonCapsuleHook : MonoBehaviour
 {
-    public OVRSkeleton skeleton;               
+    public OVRSkeleton skeleton;
 
     bool hooked;
 
     void Awake()
     {
-        if (!skeleton)   skeleton   = GetComponentInChildren<OVRSkeleton>(true);
+        if (!skeleton) skeleton = GetComponentInChildren<OVRSkeleton>(true);
     }
 
     void OnEnable() { TryHook(); }
-    void Update()   { if (!hooked) TryHook(); }
-    void OnDisable(){ hooked = false; }
+    void Update() { if (!hooked) TryHook(); }
+    void OnDisable() { hooked = false; }
 
 
     void TryHook()
@@ -35,24 +35,32 @@ public class SkeletonCapsuleHook : MonoBehaviour
             foreach (var t in skeleton.GetComponentsInChildren<Transform>(true))
                 if (t.name == "Capsules") { capsulesRoot = t; break; }
         }
-        if (!capsulesRoot) return;
-        
+        if (!capsulesRoot)
+        {
+            Debug.Log("Failed to get Capsules Root");
+            return;
+        }
+
         // Takes only the CapsuleCollider under the GameObject "Capsules"
         var caps = capsulesRoot.GetComponentsInChildren<CapsuleCollider>(true);
-        if (caps == null || caps.Length == 0) return;
+        if (caps == null || caps.Length == 0)
+        {
+            Debug.Log("No capsule collider exists");
+            return;
+        }
 
         var processed = new System.Collections.Generic.HashSet<GameObject>();
 
+        // Add our CollisionHandler to all the rigid bodies which have a CapsuleCollider child.
+        // Only add to distal capsule colliders (fingertip)
         foreach (var c in caps)
         {
-            if (!c) continue;
+            //if (!c) continue;
+            // TODO: maybe drop the wrist and use the PalmAnchor as wrist collider?
+            if (!c.name.Contains("Distal") && !c.name.Contains("Wrist")) continue;
+            Debug.Log(c.name);
 
-            Transform t = c.transform.parent ?  c.transform.parent : c.transform;
-            Rigidbody rb = null;
-
-            while (t != null && t != capsulesRoot && !(rb = t.GetComponent<Rigidbody>()))
-                t = t.parent;
-
+            Rigidbody rb = c.transform.parent.GetComponent<Rigidbody>();
             if (rb == null) continue;
             var rbGO = rb.gameObject;
 
@@ -62,7 +70,7 @@ public class SkeletonCapsuleHook : MonoBehaviour
                     hParent = rbGO.AddComponent<CollisionHandler>();
 
                 if (hParent && string.IsNullOrEmpty(hParent.fingerId))
-                    hParent.fingerId = FingerDistalFromName(c.name);
+                    hParent.fingerId = Utils.FingerDistalFromName(c.name);
 
                 processed.Add(rbGO);
             }
@@ -70,19 +78,5 @@ public class SkeletonCapsuleHook : MonoBehaviour
         }
 
         hooked = true;
-    }
-
-
-
-    public static string FingerDistalFromName(string n)
-    {
-        n = n.ToLower();
-        if (n.Contains("thumbdistal")) return "Thumb";
-        if (n.Contains("indexdistal")) return "Index";
-        if (n.Contains("middledistal")) return "Middle";
-        if (n.Contains("ringdistal"))  return "Ring";
-        if (n.Contains("pinkydistal") || n.Contains("littledistal")) return "Pinky";
-        if (n.Contains("wrist")) return "Palm";
-        return "unknown";
     }
 }

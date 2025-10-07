@@ -2,6 +2,7 @@ using System.Linq;
 using UnityEngine;
 using System.Collections;
 using System.Collections.Generic;
+using System;
 
 
 //da aggiungere a OVRHandPrefab
@@ -92,7 +93,7 @@ public class PhysicsGraspController : MonoBehaviour
         //Taking all the distal capsule colliders on the fingers
         foreach (var handler in caps)
         {
-            string fingerId = FingerDistalFromName(handler.name);
+            string fingerId = Utils.FingerDistalFromName(handler.name);
             if (!_fingerColliders.ContainsKey(fingerId))
             {
                 _fingerColliders[fingerId] = handler.GetComponent<Collider>();
@@ -216,7 +217,7 @@ public class PhysicsGraspController : MonoBehaviour
         bool thumbInContact = fingersInContact.Contains("Thumb");
         bool palmInContact = fingersInContact.Contains("Palm");
         bool hasOtherFinger = false;
-        foreach (var f in fingersInContact) { if ((f != "Thumb") && (f != "Palm")) { hasOtherFinger = true; break; } }
+        foreach (var f in fingersInContact) { if(! (f.Equals("Thumb", StringComparison.OrdinalIgnoreCase) || f.Equals("Palm", StringComparison.OrdinalIgnoreCase) || f.Equals("unknown", StringComparison.OrdinalIgnoreCase))) { hasOtherFinger = true; break; } }
 
 
         // PALM FACING: the object has to be in front of the palm
@@ -237,10 +238,10 @@ public class PhysicsGraspController : MonoBehaviour
         if (ok)
         {
             UpdateDst(rb);
-            foreach (string s in fingersInContact)
+            foreach (string f in fingersInContact)
             {
-                if (s == "Palm" || s == "unknown") continue;
-                _fingerDistanceObjAtContact[s] = _fingerDistanceObj[s];
+                if (f.Equals("Palm", StringComparison.OrdinalIgnoreCase) || f.Equals("unknown", StringComparison.OrdinalIgnoreCase)) continue;
+                _fingerDistanceObjAtContact[f] = _fingerDistanceObj[f];
             }
 
             // LEAVING IT HERE, check later
@@ -381,26 +382,11 @@ public class PhysicsGraspController : MonoBehaviour
         //_ovrHand.GetComponent<OVRSkeletonRenderer>().enabled = _enable;
         _ovrHand.GetComponent<SkinnedMeshRenderer>().enabled = _enable;
         _ovrHand.GetComponent<OVRMesh>().enabled = _enable;
-        /*if (!_enable)
-        {
-        } */
     }
 
     void OnDisable()
     {
         _currentBody = null;
         _isGrabbing = false;
-    }
-
-    public static string FingerDistalFromName(string n)
-    {
-        n = n.ToLower();
-        if (n.Contains("thumbdistal")) return "Thumb";
-        else if (n.Contains("indexdistal")) return "Index";
-        else if (n.Contains("middledistal")) return "Middle";
-        else if (n.Contains("ringdistal")) return "Ring";
-        else if (n.Contains("pinkydistal") || n.Contains("littledistal")) return "Pinky";
-        else if (n.Contains("wrist")) return "Palm";
-        return "unknown";
     }
 }
