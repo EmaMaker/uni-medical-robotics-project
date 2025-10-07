@@ -2,6 +2,7 @@ using System.Linq;
 using UnityEngine;
 using System.Collections;
 using System.Collections.Generic;
+using System;
 
 
 //da aggiungere a OVRHandPrefab
@@ -145,7 +146,7 @@ public class PhysicsGraspController : MonoBehaviour
         {
             //Check current finger distance from object w.r.t distance recorded at beginning of grasping
             //if (_fingerDistanceObj[p.Key] < p.Value - 0.005f)
-            if (_fingerDistanceObj[p.Key] < p.Value + 0.0005f)
+            if (_fingerDistanceObj[p.Key] < p.Value + 0.0015f)
             {
                 release = false;
                 break;
@@ -216,7 +217,7 @@ public class PhysicsGraspController : MonoBehaviour
         bool thumbInContact = fingersInContact.Contains("Thumb");
         bool palmInContact = fingersInContact.Contains("Palm");
         bool hasOtherFinger = false;
-        foreach (var f in fingersInContact) { if ((f != "Thumb") && (f != "Palm")) { hasOtherFinger = true; break; } }
+        foreach (var f in fingersInContact) { if (!(f.Equals("Thumb", StringComparison.OrdinalIgnoreCase) || f.Equals("Palm", StringComparison.OrdinalIgnoreCase) || f.Equals("Unknown", StringComparison.OrdinalIgnoreCase))) { hasOtherFinger = true; break; } }
 
 
         // PALM FACING: the object has to be in front of the palm
@@ -239,7 +240,7 @@ public class PhysicsGraspController : MonoBehaviour
             UpdateDst(rb);
             foreach (string s in fingersInContact)
             {
-                if (s == "Palm" || s == "unknown") continue;
+                if ( s.Equals("Palm", StringComparison.OrdinalIgnoreCase) || s.Equals("Unknown", StringComparison.OrdinalIgnoreCase)) continue;
                 _fingerDistanceObjAtContact[s] = _fingerDistanceObj[s];
             }
 
