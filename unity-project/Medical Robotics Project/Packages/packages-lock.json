@@ -162,7 +162,7 @@
       "url": "https://packages.unity.com"
     },
     "com.weart.sdk": {
-      "version": "file:/home/emamaker/university/Università/magistrale/anno-1/semestre-2/medical/project/gitrepo/WEART_SDK_Unity_v2.0.0",
+      "version": "file:C:/Users/Medical Robotics/Desktop/uni-medical-robotics-project/WEART_SDK_Unity_v2.0.0",
       "depth": 0,
       "source": "local",
       "dependencies": {

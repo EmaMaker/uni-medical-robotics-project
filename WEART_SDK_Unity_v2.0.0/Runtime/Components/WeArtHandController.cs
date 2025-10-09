@@ -186,8 +186,6 @@ namespace WeArt.Components
         static Vector3[,] finger_joint_initial_rotation = new Vector3[TOTAL_FINGERS,3];
         static Vector<double>[] finger_robot_joint_angles = new Vector<double>[TOTAL_FINGERS];
         
-        // Radii for arc of circle trajctories for IK
-        static readonly double[] trajectory_arc_radii = {0.08d, 0.068d, 0.072d, 0.08d, 0.052};
         // Map finger to used index in _thimbles[i]
         // For TouchDiver G1, middle, ring and pinky all map to the middle
         static readonly int[] FINGER_TO_CLOSURE_INDEX = {0, 1, 2, 2, 2};
@@ -202,12 +200,13 @@ namespace WeArt.Components
                                             { PI_HALF, PI_HALF, PI_HALF }, 
                                             { PI_HALF, PI_HALF, PI_HALF } };
 
-        static double[,] FINGER_MIN_ANG = { { 0, 0, 0 },
+        static double[,] FINGER_MIN_ANG = { { -0.1, -0.1, -0.1 },
                                             { 0, 0, 0 },
                                             { 0, 0, 0 },
                                             { 0, 0, 0 },
                                             { 0, 0, 0 } };
 
+        static float[] FINGER_SPLAY = {0.0f, -7f, 7f, 10f, 15f};
         // The arc of circle is parametrized as a curve by parameter t,[0,1]
         // where 0 is completely extended (q=0) and 1 completely curled (q=pi/2)
         // however this is made on a skeleton of the hand, and the visual result is not pleasant when looking
@@ -215,8 +214,8 @@ namespace WeArt.Components
         // This parameter represent how to map the thimble curvature as received by the middeware [0, 1], to the parameter
         // t that parametrizes the trajectory and how much to "cut" so that the animation of the real hand never fully matches that
         // of the skeleton hand
-        static double[] CLOSURE_TO_ARC_T_START = {0.0d, 0.0d, 0.0d, 0.0d, 0.0d};
-        static double[] CLOSURE_TO_ARC_T_END = {0.0d, 0.0d, 0.0d, 0.0d, 0.0d};
+        static double[] CLOSURE_TO_ARC_T_START = {0.0d, 0.005d, 0.005d, 0.005d, 0.005d};
+        static double[] CLOSURE_TO_ARC_T_END = {1.0d, 0.8d, 0.8d, 0.8d, 0.8d};
         // To be properly calibrated with interface
         // static double[] CLOSURE_TO_ARC_T_START = {0.0d, 0.006d, 0.008d, 0.004d, 0.0d};
         // static double[] CLOSURE_TO_ARC_T_END = {0.0d, 0.13d, 0.16d, 0.16d, 0.11d};
@@ -572,7 +571,7 @@ namespace WeArt.Components
 
         // Velocity control. Use this function if using Euler integration
         private Vector<double> velocity_control_euler(int finger, Vector<double> q, double closure){
-            Vector<double> fd = two_point_arc(finger, trajectory_arc_radii[finger], closure);
+            Vector<double> fd = cardioid(finger, closure);
             Vector<double> dq0 = null_space_term(finger, q);
 
             Matrix<double> J = jacobian(finger, q);
@@ -594,7 +593,7 @@ namespace WeArt.Components
             // This is a lambda function
             return (t, q) =>
             {
-                Vector<double> fd = two_point_arc(finger, trajectory_arc_radii[finger], cl);
+                Vector<double> fd = finger == THUMB ? two_point_arc(finger, 0.08d, cl) : cardioid(finger, cl);                
                 Vector<double> dq0 = null_space_term(finger, q);
 
                 Matrix<double> J = jacobian(finger, q);
@@ -646,7 +645,7 @@ namespace WeArt.Components
         
 
         }
-
+        
         // two point arc for trajectory
         // Finds the (portion of the) circle that passes between pExtended and pCurled and finds the exact position
         // at cl percentage between them
@@ -671,11 +670,28 @@ namespace WeArt.Components
             double gamma_end = Atan2(xp2-xO, yp2-yO);
             double gamma = gamma_end-gamma_start;
 
-            double t = CLOSURE_TO_ARC_T_START[finger] + (1-CLOSURE_TO_ARC_T_START[finger]-CLOSURE_TO_ARC_T_END[finger])*cl;
+            double t = CLOSURE_TO_ARC_T_START[finger] + (-CLOSURE_TO_ARC_T_START[finger]+CLOSURE_TO_ARC_T_END[finger])*cl;
             double xArc = R*Sin(gamma_start + gamma*t) + xO;
             double yArc = R*Cos(gamma_start + gamma*t) + yO;
-            
-            return V.DenseOfArray(new[]{xArc, yArc});
+
+            return V.DenseOfArray(new[] { xArc, yArc });
+        }
+
+        // cardiod trajectory
+        private Vector<double> cardioid(int finger, double cl)
+        {
+            double L1 = finger_link_length[finger, 0];
+            double L2 = finger_link_length[finger, 1];
+            double L3 = finger_link_length[finger, 2];
+
+            double tfin = Atan2(L1 + 2 * L2 + L3, L3 - L1);
+            double t_ = CLOSURE_TO_ARC_T_START[finger] + (CLOSURE_TO_ARC_T_END[finger] - CLOSURE_TO_ARC_T_START[finger]) * cl;
+            double t = tfin * (1 - t_);
+
+            double a = 0.5 * (L3 - L1) / ((1 - Cos(tfin)) * Cos(tfin));
+            double x = L1 - L3 + 2 * a * (1 - Cos(t)) * Cos(t);
+            double y = -L2 + 2 * a * (1 - Cos(t)) * Sin(t);
+            return V.DenseOfArray(new[] { x, y });
         }
 
         // Simulate and animate fingers at physics simulation time (simulation time step is fixed, animation time step is not)
@@ -698,8 +714,7 @@ namespace WeArt.Components
                 Quaternion quat2 = Quaternion.identity;
                 // Assign them using Euler Angles. Keep initial y and z rotation. The joint of the manipulator moves around the x axis, positive clockwise
                 if (i == THUMB) quat.eulerAngles = new Vector3(fixAngleDeg(i_j1_initial.x + Mathf.Rad2Deg * Q.At(0)), i_j1_initial.y, 50f * _thimbles[FINGER_TO_CLOSURE_INDEX[THUMB]].Abduction.Value );
-                else quat.eulerAngles = new Vector3(fixAngleDeg(i_j1_initial.x + Mathf.Rad2Deg * Q.At(0)), i_j1_initial.y, i_j1_initial.z);
-                
+                else quat.eulerAngles = new Vector3(fixAngleDeg(i_j1_initial.x + Mathf.Rad2Deg * Q.At(0)), i_j1_initial.y, i_j1_initial.z + FINGER_SPLAY[i]*_thimbles[FINGER_TO_CLOSURE_INDEX[i]].Closure.Value);       
                 quat1.eulerAngles = new Vector3(fixAngleDeg(i_j2_initial.x + Mathf.Rad2Deg * Q.At(1)), i_j2_initial.y, i_j2_initial.z);
                 quat2.eulerAngles = new Vector3(fixAngleDeg(i_j3_initial.x + Mathf.Rad2Deg*Q.At(2)), i_j3_initial.y, i_j3_initial.z);
                 // Set quaternions as rotation of each joint
