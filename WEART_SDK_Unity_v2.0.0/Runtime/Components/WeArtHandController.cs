@@ -200,7 +200,7 @@ namespace WeArt.Components
                                             { PI_HALF, PI_HALF, PI_HALF }, 
                                             { PI_HALF, PI_HALF, PI_HALF } };
 
-        static double[,] FINGER_MIN_ANG = { { 0, 0, 0 },
+        static double[,] FINGER_MIN_ANG = { { -0.1, -0.1, -0.1 },
                                             { 0, 0, 0 },
                                             { 0, 0, 0 },
                                             { 0, 0, 0 },
@@ -214,8 +214,8 @@ namespace WeArt.Components
         // This parameter represent how to map the thimble curvature as received by the middeware [0, 1], to the parameter
         // t that parametrizes the trajectory and how much to "cut" so that the animation of the real hand never fully matches that
         // of the skeleton hand
-        static double[] CLOSURE_TO_ARC_T_START = {0.0d, 0.0d, 0.0d, 0.0d, 0.0d};
-        static double[] CLOSURE_TO_ARC_T_END = {0.8d, 0.8d, 0.8d, 0.8d, 0.8d};
+        static double[] CLOSURE_TO_ARC_T_START = {0.0d, 0.005d, 0.005d, 0.005d, 0.005d};
+        static double[] CLOSURE_TO_ARC_T_END = {1.0d, 0.8d, 0.8d, 0.8d, 0.8d};
         // To be properly calibrated with interface
         // static double[] CLOSURE_TO_ARC_T_START = {0.0d, 0.006d, 0.008d, 0.004d, 0.0d};
         // static double[] CLOSURE_TO_ARC_T_END = {0.0d, 0.13d, 0.16d, 0.16d, 0.11d};
@@ -593,7 +593,7 @@ namespace WeArt.Components
             // This is a lambda function
             return (t, q) =>
             {
-                Vector<double> fd = cardioid(finger, cl);
+                Vector<double> fd = finger == THUMB ? two_point_arc(finger, 0.08d, cl) : cardioid(finger, cl);                
                 Vector<double> dq0 = null_space_term(finger, q);
 
                 Matrix<double> J = jacobian(finger, q);
@@ -645,23 +645,53 @@ namespace WeArt.Components
         
 
         }
-
+        
         // two point arc for trajectory
         // Finds the (portion of the) circle that passes between pExtended and pCurled and finds the exact position
         // at cl percentage between them
-        private Vector<double> cardioid(int finger, double cl){
+        private Vector<double> two_point_arc(int finger, double R, double cl){
+            double xp1 = pExtended[finger].At(0);
+            double yp1 = pExtended[finger].At(1);
+            double xp2 = pCurled[finger].At(0);
+            double yp2 = pCurled[finger].At(1);
+            
+            double D = yp2*yp2-yp1*yp1+xp2*xp2-xp1*xp1;
+            double E = D/(2*(xp2-xp1));
+            double C = (yp1-yp2)/(xp2-xp1);
+            
+            double a = C*C + 1;
+            double b = 2*(E*C - E*C*xp1 - yp1);
+            double c = E*E - R*R + xp1*xp1 + yp1*yp1 -2*xp1*E;
+            
+            double yO = (-b - Sqrt(b*b-4*a*c))/(2*a);
+            double xO = E+yO*C;
+        
+            double gamma_start = Atan2(xp1-xO, yp1-yO);
+            double gamma_end = Atan2(xp2-xO, yp2-yO);
+            double gamma = gamma_end-gamma_start;
+
+            double t = CLOSURE_TO_ARC_T_START[finger] + (-CLOSURE_TO_ARC_T_START[finger]+CLOSURE_TO_ARC_T_END[finger])*cl;
+            double xArc = R*Sin(gamma_start + gamma*t) + xO;
+            double yArc = R*Cos(gamma_start + gamma*t) + yO;
+
+            return V.DenseOfArray(new[] { xArc, yArc });
+        }
+
+        // cardiod trajectory
+        private Vector<double> cardioid(int finger, double cl)
+        {
             double L1 = finger_link_length[finger, 0];
             double L2 = finger_link_length[finger, 1];
             double L3 = finger_link_length[finger, 2];
 
-            double tfin = Atan2(L1+2*L2+L3, L3-L1);
-            double t_ = CLOSURE_TO_ARC_T_START[finger] + (CLOSURE_TO_ARC_T_END[finger] - CLOSURE_TO_ARC_T_START[finger])*cl;
-            double t = tfin*(1-t_);
-            
-            double a = 0.5*(L3-L1)/( (1-Cos(tfin))*Cos(tfin) );
-            double x = L1-L3 + 2*a*(1-Cos(t))*Cos(t);
-            double y = -L2 + 2*a*(1-Cos(t))*Sin(t);
-            return V.DenseOfArray(new[]{x,y});
+            double tfin = Atan2(L1 + 2 * L2 + L3, L3 - L1);
+            double t_ = CLOSURE_TO_ARC_T_START[finger] + (CLOSURE_TO_ARC_T_END[finger] - CLOSURE_TO_ARC_T_START[finger]) * cl;
+            double t = tfin * (1 - t_);
+
+            double a = 0.5 * (L3 - L1) / ((1 - Cos(tfin)) * Cos(tfin));
+            double x = L1 - L3 + 2 * a * (1 - Cos(t)) * Cos(t);
+            double y = -L2 + 2 * a * (1 - Cos(t)) * Sin(t);
+            return V.DenseOfArray(new[] { x, y });
         }
 
         // Simulate and animate fingers at physics simulation time (simulation time step is fixed, animation time step is not)
