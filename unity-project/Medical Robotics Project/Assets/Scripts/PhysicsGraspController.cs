@@ -4,7 +4,6 @@ using System.Collections;
 using System.Collections.Generic;
 using System;
 
-
 //da aggiungere a OVRHandPrefab
 
 [RequireComponent(typeof(OVRHand))]
@@ -29,18 +28,26 @@ public class PhysicsGraspController : MonoBehaviour
     public float maxThrowAngSpeed = 20f;     
     [Range(0f, 1f)] public float velSmoothing = 0.2f;
     [Range(0f, 1f)] public float angSmoothing = 0.2f;
+    [Header("Grasping parameters")]
+    [Range(0.0f, 20.0f)] public float grabDistance = 10.0f;
+    [Range(0.0f, 1.0f)] public float releaseCooldown = 0.25f;
+    [Range(-0.05f, 0.05f)] public float releaseThreshold = 0.0015f;
+    [Range(-0.25f, 0.25f)] public float handOpenDot = 0.05f;
+
+    // parent of the grasped object
+    private Transform graspedObjParent = null;
 
     // Palm Velocity
     private Vector3 _lastPalmPos;
     private Quaternion _lastPalmRot;
     private Vector3 _palmVelocity;
     private Vector3 _palmAngularVelocity;
+    
 
 
     // Fingers in contact with RB
     private readonly Dictionary<Rigidbody, HashSet<string>> _fingerContacts = new();
     private readonly Dictionary<Rigidbody, float> _fingerRelease = new();
-    private readonly float RELEASE_COOLDOWN = 0.25f;
     //distance from rigidbody for each finger
     private readonly Dictionary<string, float> _fingerDistanceObj = new();
 
@@ -51,8 +58,10 @@ public class PhysicsGraspController : MonoBehaviour
     private Dictionary<string, Collider> _fingerColliders = new();
 
     private bool _isGrabbing = false;
- 
+
     private Rigidbody _currentBody;
+    string[] handOpenFingersCheck = {"Index", "Middle", "Ring", "Pinky" };
+
 
 
 
@@ -127,13 +136,23 @@ public class PhysicsGraspController : MonoBehaviour
         _lastPalmPos = palmAnchor.position;
         _lastPalmRot = palmAnchor.rotation;
 
+        // Cooldown between grasps
         List<Rigidbody> toRemove = new List<Rigidbody>();
         foreach (var finger in _fingerRelease)
         {
-            if (Time.fixedTime - finger.Value > RELEASE_COOLDOWN)
-            toRemove.Add(finger.Key);
+            if (Time.fixedTime - finger.Value > releaseCooldown)
+                toRemove.Add(finger.Key);
         }
-        foreach(var finger in toRemove) _fingerRelease.Remove(finger);
+        foreach (var finger in toRemove) _fingerRelease.Remove(finger);
+
+        string ds = "";
+        foreach (var s in handOpenFingersCheck)
+        {
+            if(_fingerColliders.ContainsKey(s))
+                ds += $" {FingerOpen(_fingerColliders[s].transform)} |";
+        }
+        ds += $"Hand Open: {HandOpen()}";
+        //Debug.Log(ds);
 
         if (_currentBody == null || !ovrSkeleton.IsDataHighConfidence) return;
 
@@ -146,7 +165,7 @@ public class PhysicsGraspController : MonoBehaviour
         {
             //Check current finger distance from object w.r.t distance recorded at beginning of grasping
             //if (_fingerDistanceObj[p.Key] < p.Value - 0.005f)
-            if (_fingerDistanceObj[p.Key] < p.Value + 0.0015f)
+            if (_fingerDistanceObj[p.Key] < p.Value + releaseThreshold) //||!FingerOpen(_fingerColliders[p.Key].transform))
             {
                 release = false;
                 break;
@@ -156,13 +175,31 @@ public class PhysicsGraspController : MonoBehaviour
         {
             EndGrab();
         }
+        /*if (HandOpen())
+        {
+            Debug.Log("Hand open, releasing");
+            EndGrab();
+        }*/
+    }
+
+    public bool HandOpen()
+    {
+        foreach (var s in handOpenFingersCheck)
+            if (!FingerOpen(_fingerColliders[s].transform)) return false;
+        return true;
+    }
+    
+    public bool FingerOpen(Transform finger)
+    {
+        return Vector3.Dot(finger.TransformDirection(transform.forward), PalmForward()) < handOpenDot;
     }
 
     //Updates the distance from each finger to the rigid body at any time
     void UpdateDst(Rigidbody rb)
     {
-        if (rb == null) return;
         string[] fingerNames = { "Thumb", "Index", "Middle", "Ring", "Pinky" };
+
+        if (rb == null) return;
 
         //Getting each finger's distance from the touched rigidbody
         foreach (string s in fingerNames)
@@ -230,13 +267,15 @@ public class PhysicsGraspController : MonoBehaviour
 
 
         // GRASPING CONDITION
-        Debug.Log("---------" + facing);
+        //Debug.Log("---------" + facing);
         Debug.DrawLine(palmAnchor.position, toObj);
         Debug.DrawLine(palmAnchor.position, palmAnchor.position+PalmForward());
-        bool ok = (((thumbInContact || (palmInContact ))) && hasOtherFinger && dst <= 1.1f && palmFacingOk);
+        bool ok = (((thumbInContact || (palmInContact))) && hasOtherFinger && dst <= grabDistance && palmFacingOk);
+        Debug.Log("-----DST: " + dst);
 
         if (ok)
         {
+            Debug.Log("---------OK");
             UpdateDst(rb);
             foreach (string s in fingersInContact)
             {
@@ -302,9 +341,11 @@ public class PhysicsGraspController : MonoBehaviour
     private void Update()
     {
         // Let the copy do a first update the find the position of the hand, then disable skeleton
-        if (handCopy != null && !(handCopy.medicalFirstUpdate))
+        if (handCopy != null && !handCopy.medicalFirstUpdate)
         {
+            // Enable render for the copy
             enableRenderComponents(handCopy, true);
+            // Disable OVRSkeleton to disable tracking for the copy
             handCopy.GetComponent<OVRSkeleton>().enabled = false;
 
             // After a first update is done, finally reattach all children to the original hand
@@ -327,6 +368,8 @@ public class PhysicsGraspController : MonoBehaviour
         rb.isKinematic = true;
         rb.useGravity = false;
 
+        // save parent of grasped object
+        graspedObjParent = rb.transform.parent;
         // TODO: disable colliders on the grasped object
         //rb.gameObject.GetComponent<Collider> ().enabled = false;
         rb.transform.SetParent(palmAnchor);
@@ -344,15 +387,18 @@ public class PhysicsGraspController : MonoBehaviour
         //Transfering the palm velocity to the object on release (Throw feature) 
         if (_currentBody && copyPalmVelocityOnRelease)
         {
+            /*
             var v = _palmVelocity * throwMultiplier;
             var w = _palmAngularVelocity;
             if (v.magnitude > maxThrowSpeed) v = v.normalized * maxThrowSpeed;
             if (w.magnitude > maxThrowAngSpeed) w = w.normalized * maxThrowAngSpeed;
+            */
 
-            _currentBody.transform.SetParent(null);
+            // reattach grasped object to original parent
+            _currentBody.transform.SetParent(graspedObjParent);
             _currentBody.isKinematic = false;
-            _currentBody.velocity = v;
-            _currentBody.angularVelocity = w;
+            _currentBody.velocity = Vector3.zero;
+            _currentBody.angularVelocity = Vector3.zero;
             _currentBody.useGravity = true;
             //_currentBody.gameObject.GetComponent<Collider> ().enabled = true;
 
