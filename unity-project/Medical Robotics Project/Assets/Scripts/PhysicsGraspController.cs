@@ -3,7 +3,6 @@ using UnityEngine;
 using System.Collections;
 using System.Collections.Generic;
 using System;
-
 //da aggiungere a OVRHandPrefab
 
 [RequireComponent(typeof(OVRHand))]
@@ -32,7 +31,7 @@ public class PhysicsGraspController : MonoBehaviour
     [Range(0.0f, 20.0f)] public float grabDistance = 10.0f;
     [Range(0.0f, 1.0f)] public float releaseCooldown = 0.25f;
     [Range(-0.05f, 0.05f)] public float releaseThreshold = 0.0015f;
-    [Range(-0.25f, 0.25f)] public float handOpenDot = 0.05f;
+    [Range(0.0f, 0.5f)] public float handOpenDot = 0.25f;
 
     // parent of the grasped object
     private Transform graspedObjParent = null;
@@ -61,9 +60,6 @@ public class PhysicsGraspController : MonoBehaviour
 
     private Rigidbody _currentBody;
     string[] handOpenFingersCheck = {"Index", "Middle", "Ring", "Pinky" };
-
-
-
 
     void Reset()
     {
@@ -152,7 +148,7 @@ public class PhysicsGraspController : MonoBehaviour
                 ds += $" {FingerOpen(_fingerColliders[s].transform)} |";
         }
         ds += $"Hand Open: {HandOpen()}";
-        //Debug.Log(ds);
+        Debug.Log(ds);
 
         if (_currentBody == null || !ovrSkeleton.IsDataHighConfidence) return;
 
@@ -175,23 +171,29 @@ public class PhysicsGraspController : MonoBehaviour
         {
             EndGrab();
         }
-        /*if (HandOpen())
+        if (HandOpen())
         {
             Debug.Log("Hand open, releasing");
             EndGrab();
-        }*/
+        }
     }
 
     public bool HandOpen()
     {
         foreach (var s in handOpenFingersCheck)
-            if (!FingerOpen(_fingerColliders[s].transform)) return false;
+            if (_fingerColliders.ContainsKey(s) && !FingerOpen(_fingerColliders[s].transform)) return false;
         return true;
     }
     
     public bool FingerOpen(Transform finger)
     {
-        return Vector3.Dot(finger.TransformDirection(transform.forward), PalmForward()) < handOpenDot;
+        Vector3 x = Vector3.Normalize(finger.right);
+        Vector3 z = PalmForward();
+
+        Vector3 v = Vector3.Cross(x, z);
+        Vector3 vp = palmAnchor.InverseTransformDirection(v);
+        //Debug.Log(vp);
+        return vp.x > 0.0005f && Mathf.Abs(Vector3.Dot(x,z)) < handOpenDot;
     }
 
     //Updates the distance from each finger to the rigid body at any time
