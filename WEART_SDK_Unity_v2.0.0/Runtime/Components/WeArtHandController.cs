@@ -22,7 +22,9 @@ namespace WeArt.Components
     /// This component is able to animate a virtual hand using closure data coming from
     /// a set of <see cref="WeArtThimbleTrackingObject"/> components.
     /// </summary>
-    [RequireComponent(typeof(Animator))]
+    
+    // MEDICAL: disable weart's animation pipeline to replace with our own based on IK
+    //[RequireComponent(typeof(Animator))]
     public class WeArtHandController : MonoBehaviour
     {
         #region Fields
@@ -200,7 +202,7 @@ namespace WeArt.Components
                                             { PI_HALF, PI_HALF, PI_HALF }, 
                                             { PI_HALF, PI_HALF, PI_HALF } };
 
-        static double[,] FINGER_MIN_ANG = { { -0.1, -0.1, -0.1 },
+        static double[,] FINGER_MIN_ANG = { { 0, 0, 0 },
                                             { 0, 0, 0 },
                                             { 0, 0, 0 },
                                             { 0, 0, 0 },
@@ -251,6 +253,14 @@ namespace WeArt.Components
 
             // Setup animation components
             _animator = GetComponent<Animator>();
+            
+            // MEDICAL: disable animator
+            if(_animator != null) _animator.enabled = false;
+            _openedHandState = null;
+            _abductionHandState = null;
+            _closedHandState = null;
+            
+            // But leave the rest of the animation system as-is.
             _fingers = new AvatarMask[] { _thumbMask, _indexMask, _middleMask, _ringMask, _pinkyMask };
             _thimbles = new WeArtThimbleTrackingObject[] {
                 _thumbThimbleTracking,
@@ -359,6 +369,9 @@ namespace WeArt.Components
         /// </summary>
         private void OnEnable()
         {
+            // MEDICAL: disable the animator component and prevent the graph from playing
+            // Keep the fingerMixer since both snap and physical grasping use the weights for grasping conditions
+            // Then Use the fingerMixer weight to animate the hand
             _graph = PlayableGraph.Create(nameof(WeArtHandController));
 
             var fingersLayerMixer = AnimationLayerMixerPlayable.Create(_graph, _fingers.Length);
@@ -383,13 +396,14 @@ namespace WeArt.Components
                 fingersLayerMixer.SetInputWeight((int)i, 1);
             }
 
-            var handMixer = AnimationMixerPlayable.Create(_graph, 2);
-            _graph.Connect(fingersLayerMixer, 0, handMixer, 0);
-            handMixer.SetInputWeight(0, 1);
-            var playableOutput = AnimationPlayableOutput.Create(_graph, nameof(WeArtHandController), _animator);
-            playableOutput.SetSourcePlayable(handMixer);
-            _graph.SetTimeUpdateMode(DirectorUpdateMode.GameTime);
-            _graph.Play();
+            // MEDICAL: disable weart's animation pipeline to replace with our own based on IK
+            //var handMixer = AnimationMixerPlayable.Create(_graph, 2);
+            //_graph.Connect(fingersLayerMixer, 0, handMixer, 0);
+            //handMixer.SetInputWeight(0, 1);
+            //var playableOutput = AnimationPlayableOutput.Create(_graph, nameof(WeArtHandController), _animator);
+            //playableOutput.SetSourcePlayable(handMixer);
+            //_graph.SetTimeUpdateMode(DirectorUpdateMode.GameTime);
+            //_graph.Play();
 
             // Subscribe custom finger closure behaviour during the grasp
             _graspingSystem.OnGraspingEvent += UpdateFingerClosure;
@@ -698,9 +712,12 @@ namespace WeArt.Components
         // See: https://docs.unity3d.com/6000.1/Documentation/Manual/fixed-updates.html
         // For setting of initial conditions, see Awake()
         private void FixedUpdate(){
-
+            
+            float abduction = _fingersMixers[0].GetInputWeight(2);
             for(int i = THUMB; i <= PINKY; i++){
-                finger_robot_joint_angles[i] = sim(i, finger_robot_joint_angles[i], _thimbles[FINGER_TO_CLOSURE_INDEX[i]].Closure.Value);
+                // TODO: extract closure and abduction for fingermixer
+                float closure = _fingersMixers[i].GetInputWeight(1);
+                finger_robot_joint_angles[i] = sim(i, finger_robot_joint_angles[i], closure);
 
                 // Short hand                
                 Vector<double> Q = finger_robot_joint_angles[i];
@@ -713,8 +730,8 @@ namespace WeArt.Components
                 Quaternion quat1 = Quaternion.identity;
                 Quaternion quat2 = Quaternion.identity;
                 // Assign them using Euler Angles. Keep initial y and z rotation. The joint of the manipulator moves around the x axis, positive clockwise
-                if (i == THUMB) quat.eulerAngles = new Vector3(fixAngleDeg(i_j1_initial.x + Mathf.Rad2Deg * Q.At(0)), i_j1_initial.y, 50f * _thimbles[FINGER_TO_CLOSURE_INDEX[THUMB]].Abduction.Value );
-                else quat.eulerAngles = new Vector3(fixAngleDeg(i_j1_initial.x + Mathf.Rad2Deg * Q.At(0)), i_j1_initial.y, i_j1_initial.z + FINGER_SPLAY[i]*_thimbles[FINGER_TO_CLOSURE_INDEX[i]].Closure.Value);       
+                if (i == THUMB) quat.eulerAngles = new Vector3(fixAngleDeg(i_j1_initial.x + Mathf.Rad2Deg * Q.At(0)), i_j1_initial.y, 50f * abduction);
+                else quat.eulerAngles = new Vector3(fixAngleDeg(i_j1_initial.x + Mathf.Rad2Deg * Q.At(0)), i_j1_initial.y, i_j1_initial.z + FINGER_SPLAY[i]*closure);
                 quat1.eulerAngles = new Vector3(fixAngleDeg(i_j2_initial.x + Mathf.Rad2Deg * Q.At(1)), i_j2_initial.y, i_j2_initial.z);
                 quat2.eulerAngles = new Vector3(fixAngleDeg(i_j3_initial.x + Mathf.Rad2Deg*Q.At(2)), i_j3_initial.y, i_j3_initial.z);
                 // Set quaternions as rotation of each joint
@@ -722,6 +739,10 @@ namespace WeArt.Components
                 finger_transform[i, 1].localRotation = quat1;
                 finger_transform[i, 2].localRotation = quat2;
             }
+
+            // string s = $"Abduction {abduction} | ";
+            // for(int i = THUMB; i <= PINKY; i++) s += $"{_fingersMixers[i].GetInputWeight(1)}";
+            // WeArtLog.Log(s);
         }
         // END MEDICAL
         // -------------------- //
@@ -732,7 +753,102 @@ namespace WeArt.Components
         /// </summary>
         private void AnimateFingers()
         {
-            _graph.Evaluate();
+            // MEDICAL: disable weart's animation pipeline to replace with our own based on IK
+            // _graph.Evaluate();
+
+            // MEDICAL: leave the rest as-is, use the weights after manipulation here as closure values in FixedUpdate()
+            if (_useCustomPoses && _graspingSystem.GraspingState == GraspingState.Grabbed)
+            {
+                // In this case the fingers not follow the tracking but are driven by WeArtGraspPose
+                // The behaviour is called in this script in -> UpdateFingerClousure
+            }
+            else // Otherwise fingers behaviour works as always
+            {
+                for (int i = 0; i < _fingers.Length; i++)
+                {
+                    if (!_thimbles[i].IsBlocked)
+                    {
+                        bool isGettingCloseToGrasp = false;
+
+                        if (i == 0 && _graspingSystem.ThumbGraspCheckTouchables.Count > 0 && _thimbles[i].Closure.Value > _fingersMixers[i].GetInputWeight(1))
+                            isGettingCloseToGrasp = true; // Finger is getting close to an object that it can grab and slows the speed in order to ensure a perfect position on the touchable object
+
+                        if (i == 1 && _graspingSystem.IndexGraspCheckTouchables.Count > 0 && _thimbles[i].Closure.Value > _fingersMixers[i].GetInputWeight(1))
+                            isGettingCloseToGrasp = true;
+
+                        if (i == 2 && _graspingSystem.MiddleGraspCheckTouchables.Count > 0 && _thimbles[i].Closure.Value > _fingersMixers[i].GetInputWeight(1))
+                            isGettingCloseToGrasp = true;
+
+                        if (WeArtController.Instance._deviceGeneration == DeviceGeneration.TD_Pro)
+                        {
+                            if (i == 3 && _graspingSystem.AnnularGraspCheckTouchables.Count > 0 && _thimbles[i].Closure.Value > _fingersMixers[i].GetInputWeight(1))
+                                isGettingCloseToGrasp = true;
+
+                            if (i == 4 && _graspingSystem.PinkyGraspCheckTouchables.Count > 0 && _thimbles[i].Closure.Value > _fingersMixers[i].GetInputWeight(1))
+                                isGettingCloseToGrasp = true;
+                        }
+
+                        float weight;
+                        if (!isGettingCloseToGrasp)
+                        {
+                            weight = _thimbles[i].Closure.Value;
+                        }
+                        else // If in proximity, move slower in order to avoid clipping through colliders at high movement speed per frame
+                        {
+                            weight = Mathf.Lerp(_fingersMixers[i].GetInputWeight(1), _thimbles[i].Closure.Value,
+                               Time.deltaTime * (_thimbles[i].SafeUnblockSeconds > 0 ? _fingersSlideSpeed : _fingersAnimationSpeed));
+                        }
+
+                        if (_slowFingerAnimationTime > 0)
+                        {
+                            weight = Mathf.Lerp(_fingersMixers[i].GetInputWeight(1), _thimbles[i].Closure.Value,
+                               Time.deltaTime * _fingersSlideSpeed * _extraFingerSpeed);
+                        }
+
+                        if (i > 2 && WeArtController.Instance._deviceGeneration == DeviceGeneration.TD)
+                        {
+                            _fingersMixers[i].SetInputWeight(0, 1 - _fingersMixers[2].GetInputWeight(1));
+                            _fingersMixers[i].SetInputWeight(1, _fingersMixers[2].GetInputWeight(1));
+                        }
+                        else
+                        {
+                            _fingersMixers[i].SetInputWeight(0, 1 - weight);
+                            _fingersMixers[i].SetInputWeight(1, weight);
+                        }
+
+                        // Thumb has an extra field called abduction that allows the finger to move up and down (non closing motion)
+                        if (_thimbles[i].ActuationPoint == ActuationPoint.Thumb)
+                        {
+                            float abduction;
+                            if (!isGettingCloseToGrasp)
+                            {
+                                abduction = _thimbles[i].Abduction.Value;
+                            }
+                            else
+                            {
+                                abduction = Mathf.Lerp(_fingersMixers[i].GetInputWeight(2), _thimbles[i].Abduction.Value,
+                                Time.deltaTime * (_thimbles[i].SafeUnblockSeconds > 0 ? _fingersSlideSpeed : _fingersAnimationSpeed));
+                            }
+
+                            if (_slowFingerAnimationTime > 0)
+                            {
+                                abduction = Mathf.Lerp(_fingersMixers[i].GetInputWeight(2), _thimbles[i].Abduction.Value,
+                                Time.deltaTime * (_thimbles[i].SafeUnblockSeconds > 0 ? _fingersSlideSpeed * _extraFingerSpeed : _thumbAnimationSpeed));
+                            }
+
+                            _fingersMixers[i].SetInputWeight(2, abduction);
+                        }
+
+                        if (_thimbles[i].SafeUnblockSeconds > 0)
+                            _thimbles[i].SafeUnblockSeconds -= Time.deltaTime;
+                    }
+                }
+            }
+
+
+            // Slow finger animation countdown
+            if (_slowFingerAnimationTime > 0)
+                _slowFingerAnimationTime -= Time.deltaTime;
         }
 
         public void SetFingerAnimation(EasyGraspData data)
