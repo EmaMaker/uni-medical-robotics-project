@@ -1,6 +1,6 @@
 # Description
 
-This repo contains files and instructions for the project for the Medical Robotics exam at Sapienza University of Rome (AIRO/MBIR/MCER - Group 9)
+This repo contains files and instructions for the project for the Medical Robotics exam at Sapienza University of Rome (MARR/MBIR/MCER - Group 9)
 
 The objective of the project is to execute a grasping task in a VR environment in [Unity game engine](https://unity3d.com) using the [WEART TouchDIVER G1 haptic interface](https://weart.it/haptic-vr-products/touchdiver-haptic-glove/).
 
@@ -51,6 +51,6 @@ Then restart Unity and in the toolbar a new submenu named NuGet will appear. Go 
     - [x] Grasping (WeART Grasping works with our modifications)
 
 - Camera
-    - [ ] Machine vision
-    - [ ] Animation using IK
-    - [ ] Grasping
+    - [x] Machine vision
+    - [x] Animation using IK
+    - [x] Grasping
