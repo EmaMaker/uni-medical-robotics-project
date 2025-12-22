@@ -4,7 +4,6 @@ using UnityEngine;
 
 public class Random_Position : MonoBehaviour
 {
-    public GameObject Teleporting_Object;
     public GameObject Center;
     public GameObject Radius;
 
@@ -22,7 +21,7 @@ public class Random_Position : MonoBehaviour
 
         if (Input.GetKeyDown(KeyCode.R))
         {
-            Teleporting_Object.transform.position = center + radius * new Vector3(Random.Range(-0.5f, 0.5f), 0, Random.Range(-0.5f, 0.5f));
+            transform.position = center + radius * new Vector3(Random.Range(-0.5f, 0.5f), 0, Random.Range(-0.5f, 0.5f));
 
             rb.velocity = Vector3.zero;
             rb.angularVelocity = Vector3.zero;

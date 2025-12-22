@@ -56,7 +56,7 @@ public class PhysicsGraspController : MonoBehaviour
     //All Finger colliders
     private Dictionary<string, Collider> _fingerColliders = new();
 
-    private bool _isGrabbing = false;
+    public bool _isGrabbing = false;
 
     private Rigidbody _currentBody;
     string[] handOpenFingersCheck = {"Index", "Middle", "Ring", "Pinky" };
@@ -141,14 +141,14 @@ public class PhysicsGraspController : MonoBehaviour
         }
         foreach (var finger in toRemove) _fingerRelease.Remove(finger);
 
-        string ds = "";
+        /*string ds = "";
         foreach (var s in handOpenFingersCheck)
         {
             if(_fingerColliders.ContainsKey(s))
                 ds += $" {FingerOpen(_fingerColliders[s].transform)} |";
         }
         ds += $"Hand Open: {HandOpen()}";
-        Debug.Log(ds);
+        Debug.Log(ds);*/
 
         if (_currentBody == null || !ovrSkeleton.IsDataHighConfidence) return;
 

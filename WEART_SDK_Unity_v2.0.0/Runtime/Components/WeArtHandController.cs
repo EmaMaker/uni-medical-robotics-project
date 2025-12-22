@@ -14,7 +14,7 @@ using WeArt.Utils;
 
 using MathNet.Numerics.LinearAlgebra;
 using MathNet.Numerics.OdeSolvers;
-using System;
+
 
 namespace WeArt.Components
 {
@@ -194,7 +194,7 @@ namespace WeArt.Components
 
         // Define the minimum and maximum degrees for each finger (5) and thimble (3)
         // First index dictates the finger, second index the thimble
-        static readonly double PI_HALF = MathF.PI * 0.5d;
+        static readonly double PI_HALF = Mathf.PI * 0.5d;
 
         static double[,] FINGER_MAX_ANG = { { 30.0d * Mathf.Deg2Rad, 30.0d * Mathf.Deg2Rad, PI_HALF }, 
                                             { PI_HALF, PI_HALF, PI_HALF }, 
@@ -603,7 +603,7 @@ namespace WeArt.Components
         // https://learn.microsoft.com/en-us/dotnet/csharp/programming-guide/delegates/using-delegates
         // The first two parameters are types of arguments of the function (time, state) and the last is the return type
         // extra parameters (e.g. closure) are put as actual arguments to the function (I don't know if it's the right syntax, but it's the most clear to me and it works)
-        private Func<double, Vector<double>, Vector<double>> velocity_control_ode(int finger, double cl) {
+        private System.Func<double, Vector<double>, Vector<double>> velocity_control_ode(int finger, double cl) {
             // This is a lambda function
             return (t, q) =>
             {
